@@ -1,20 +1,20 @@
-import asyncio
-import os
-import time
-import json
-import hashlib
+from os import getenv
+from time import time
+from json import dump, load
+from hashlib import md5
 from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
 from dotenv import load_dotenv
 from notion_client import AsyncClient
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import threading
+from asyncio import Lock as AsyncLock, Semaphore, gather, run
+from threading import Lock as ThreadLock
 
 load_dotenv()
 
-NOTION_API_KEY = os.getenv("NOTION_API_KEY")
-HOME_PAGE_ID = os.getenv("NOTION_HOME_PAGE_ID")
+NOTION_API_KEY = getenv("NOTION_API_KEY")
+HOME_PAGE_ID = getenv("NOTION_HOME_PAGE_ID")
 
 # Turbo configuration - optimized for speed
 MAX_CONCURRENT_REQUESTS = 30  # Conservative but effective
@@ -45,10 +45,10 @@ class TurboCache:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(exist_ok=True)
         self._memory_cache = {}
-        self._lock = threading.Lock()
+        self._lock = ThreadLock()  # Use ThreadLock alias
     
     def _get_cache_key(self, page_id: str) -> str:
-        return hashlib.md5(f"notion_page_{page_id}".encode()).hexdigest()
+        return md5(f"notion_page_{page_id}".encode()).hexdigest()
     
     def _get_cache_path(self, page_id: str) -> Path:
         cache_key = self._get_cache_key(page_id)
@@ -75,7 +75,7 @@ class TurboCache:
         
         try:
             with open(cache_path, 'r') as f:
-                data = json.load(f)
+                data = load(f)
             
             timestamp = datetime.fromisoformat(data['timestamp'])
             if datetime.now() - timestamp > timedelta(hours=CACHE_DURATION_HOURS):
@@ -124,7 +124,7 @@ class TurboCache:
                 'etag': etag
             }
             with open(cache_path, 'w') as f:
-                json.dump(cache_entry, f, indent=2)
+                dump(cache_entry, f, indent=2)
         except Exception as e:
             print(f"Cache write error: {e}")
 
@@ -135,8 +135,8 @@ class TurboRateLimiter:
         self.max_requests = max_requests
         self.time_window = time_window
         self.requests = []
-        self._lock = asyncio.Lock()
-        self._semaphore = asyncio.Semaphore(max_requests)
+        self._lock = AsyncLock()  # Use AsyncLock alias
+        self._semaphore = Semaphore(max_requests)
         self.error_count = 0
         self.success_count = 0
     
@@ -144,7 +144,7 @@ class TurboRateLimiter:
         """Intelligent rate limiting."""
         await self._semaphore.acquire()
         async with self._lock:
-            now = time.time()
+            now = time()
             self.requests = [req_time for req_time in self.requests 
                            if now - req_time < self.time_window]
             self.requests.append(now)
@@ -211,7 +211,7 @@ async def fetch_blocks_batch_turbo(client, block_ids: List[str], visited: Set[st
     
     tasks = [fetch_block_children_turbo(client, block_id, visited) 
              for block_id in unique_blocks]
-    return await asyncio.gather(*tasks, return_exceptions=True)
+    return await gather(*tasks, return_exceptions=True)
 
 async def fetch_all_blocks_turbo(root_id: str) -> Dict[str, Any]:
     """Turbo block fetching with maximum speed optimizations."""
@@ -222,7 +222,7 @@ async def fetch_all_blocks_turbo(root_id: str) -> Dict[str, Any]:
         return cached_data.data
     
     print(f"🚀 Starting turbo fetch...")
-    start_time = time.time()
+    start_time = time()
     
     # Create client
     client = AsyncClient(auth=NOTION_API_KEY)
@@ -257,7 +257,7 @@ async def fetch_all_blocks_turbo(root_id: str) -> Dict[str, Any]:
         queue.extend(new_queue)
         
         # Progress update
-        elapsed = time.time() - start_time
+        elapsed = time() - start_time
         if elapsed > 0:
             rate = total_blocks_processed / elapsed
             print(f"⚡ Processed {total_blocks_processed} blocks at {rate:.0f} blocks/sec")
@@ -265,7 +265,7 @@ async def fetch_all_blocks_turbo(root_id: str) -> Dict[str, Any]:
     # Cache the results
     cache.set(root_id, block_tree)
     
-    total_time = time.time() - start_time
+    total_time = time() - start_time
     print(f"✅ Completed in {total_time:.2f}s! Total blocks: {total_blocks_processed}")
     
     return block_tree
@@ -334,15 +334,15 @@ async def main_async():
     print(f"Max concurrent requests: {MAX_CONCURRENT_REQUESTS}")
     print(f"Batch size: {BATCH_SIZE}")
     
-    start_time = time.time()
+    start_time = time()
     block_tree = await fetch_all_blocks_turbo(HOME_PAGE_ID)
-    fetch_time = time.time() - start_time
+    fetch_time = time() - start_time
     
     print(f"\n--- Markdown Output (generated in {fetch_time:.3f}s) ---\n")
-    render_start_time = time.time()
+    render_start_time = time()
     total_chars = render_markdown_turbo(block_tree, HOME_PAGE_ID)
-    render_time = time.time() - render_start_time
-    total_time = time.time() - start_time
+    render_time = time() - render_start_time
+    total_time = time() - start_time
     
     print(f"\n" + "="*60)
     print(f"📊 TURBO PERFORMANCE SUMMARY")
@@ -356,7 +356,7 @@ async def main_async():
 
 def main():
     """Main function with async execution."""
-    asyncio.run(main_async())
+    run(main_async())
 
 if __name__ == "__main__":
     main() 
