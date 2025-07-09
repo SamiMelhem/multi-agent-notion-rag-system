@@ -26,8 +26,7 @@ ENABLE_CACHE = True
 # Only fetch the most essential block types
 TURBO_BLOCK_TYPES = {
     "paragraph", "heading_1", "heading_2", "heading_3", 
-    "bulleted_list_item", "numbered_list_item"
-    # Removed toggle and child_page for maximum speed
+    "bulleted_list_item", "numbered_list_item", "child_page", "toggle"
 }
 
 @dataclass
@@ -281,9 +280,20 @@ def render_markdown_turbo(block_tree, root_id, indent=0):
         if block_type not in TURBO_BLOCK_TYPES:
             continue
             
-        rich_text = block.get(block_type, {}).get("rich_text", [])
-        text = "".join([t.get("plain_text", "") for t in rich_text])
-        processed_blocks.append((block_type, text, block))
+        if block_type == "child_page":
+            # Handle child page blocks
+            page_title = block.get("child_page", {}).get("title", "Untitled Page")
+            processed_blocks.append((block_type, page_title, block))
+        elif block_type == "toggle":
+            # Handle toggle blocks
+            rich_text = block.get("toggle", {}).get("rich_text", [])
+            text = "".join([t.get("plain_text", "") for t in rich_text])
+            processed_blocks.append((block_type, text, block))
+        else:
+            # Handle text blocks
+            rich_text = block.get(block_type, {}).get("rich_text", [])
+            text = "".join([t.get("plain_text", "") for t in rich_text])
+            processed_blocks.append((block_type, text, block))
     
     # Render blocks efficiently and track character count
     total_chars = 0
@@ -315,11 +325,27 @@ def render_markdown_turbo(block_tree, root_id, indent=0):
                 output = f"{prefix}{text}"
                 print(output)
                 total_chars += len(output)
+        elif block_type == "child_page":
+            # Render child page with special formatting
+            output = f"{prefix}📄 **{text}** (Page ID: {block['id']})"
+            print(output)
+            total_chars += len(output)
+        elif block_type == "toggle":
+            # Render toggle with special formatting
+            output = f"{prefix}<details><summary>{text}</summary>"
+            print(output)
+            total_chars += len(output)
         
         # Handle nested content
         if block.get("has_children"):
             nested_chars = render_markdown_turbo(block_tree, block["id"], indent + 1)
             total_chars += nested_chars
+            
+            # Close toggle if it's a toggle block
+            if block_type == "toggle":
+                close_output = f"{prefix}</details>"
+                print(close_output)
+                total_chars += len(close_output)
     
     return total_chars
 
