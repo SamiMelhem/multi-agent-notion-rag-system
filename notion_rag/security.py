@@ -3,10 +3,10 @@ Security utilities for the Notion RAG system.
 Provides secure API key management, input validation, and sanitization.
 """
 
+import keyring
 from re import match, sub
 from string import ascii_letters, digits, hexdigits
 from typing import Optional
-from keyring import set_password, get_password, delete_password
 from pydantic import BaseModel, Field, field_validator
 from logging import getLogger
 
@@ -37,7 +37,7 @@ class SecureKeyManager:
             raise ValueError("Invalid API key format")
         
         try:
-            set_password(cls.SERVICE_NAME, key_name, api_key)
+            keyring.set_password(cls.SERVICE_NAME, key_name, api_key)
             logger.info(f"API key '{key_name}' stored successfully")
             return True
         except Exception as e:
@@ -59,7 +59,7 @@ class SecureKeyManager:
             raise ValueError(f"Invalid key name: {key_name}")
         
         try:
-            key = get_password(cls.SERVICE_NAME, key_name)
+            key = keyring.get_password(cls.SERVICE_NAME, key_name)
             if key:
                 logger.info(f"API key '{key_name}' retrieved successfully")
                 return key
@@ -85,7 +85,7 @@ class SecureKeyManager:
             raise ValueError(f"Invalid key name: {key_name}")
         
         try:
-            delete_password(cls.SERVICE_NAME, key_name)
+            keyring.delete_password(cls.SERVICE_NAME, key_name)
             logger.info(f"API key '{key_name}' deleted successfully")
             return True
         except Exception as e:

@@ -2,7 +2,7 @@
 Tests for the security module.
 """
 
-from pytest import pytest
+from pytest import raises
 from unittest.mock import patch
 from pydantic import ValidationError
 
@@ -71,12 +71,12 @@ class TestSecureKeyManager:
     
     def test_store_api_key_invalid_key_name(self):
         """Test storing API key with invalid key name."""
-        with pytest.raises(ValueError, match="Invalid key name"):
+        with raises(ValueError, match="Invalid key name"):
             SecureKeyManager.store_api_key("invalid key", "valid_api_key_123")
     
     def test_store_api_key_invalid_api_key(self):
         """Test storing invalid API key."""
-        with pytest.raises(ValueError, match="Invalid API key format"):
+        with raises(ValueError, match="Invalid API key format"):
             SecureKeyManager.store_api_key("valid_key", "short")
     
     @patch('notion_rag.security.keyring')
@@ -109,7 +109,7 @@ class TestSecureKeyManager:
     
     def test_retrieve_api_key_invalid_key_name(self):
         """Test retrieving API key with invalid key name."""
-        with pytest.raises(ValueError, match="Invalid key name"):
+        with raises(ValueError, match="Invalid key name"):
             SecureKeyManager.retrieve_api_key("invalid key")
     
     @patch('notion_rag.security.keyring')
@@ -211,12 +211,12 @@ class TestSecureNotionConfig:
     
     def test_invalid_api_key(self):
         """Test invalid API key validation."""
-        with pytest.raises(ValidationError):
+        with raises(ValidationError):
             SecureNotionConfig(api_key="short")
     
     def test_invalid_database_id(self):
         """Test invalid database ID validation."""
-        with pytest.raises(ValidationError):
+        with raises(ValidationError):
             SecureNotionConfig(database_id="invalid")
     
     def test_optional_fields(self):
@@ -242,7 +242,7 @@ class TestSecureTextInput:
     
     def test_content_required(self):
         """Test that content is required."""
-        with pytest.raises(ValidationError):
+        with raises(ValidationError):
             SecureTextInput()
     
     def test_content_too_long(self):
@@ -255,13 +255,13 @@ class TestSecureTextInput:
     def test_title_too_long(self):
         """Test title length validation."""
         long_title = "a" * (InputValidator.MAX_TITLE_LENGTH + 1)
-        with pytest.raises(ValidationError):
+        with raises(ValidationError):
             SecureTextInput(content="Valid content", title=long_title)
     
     def test_description_too_long(self):
         """Test description length validation."""
         long_desc = "a" * (InputValidator.MAX_DESCRIPTION_LENGTH + 1)
-        with pytest.raises(ValidationError):
+        with raises(ValidationError):
             SecureTextInput(content="Valid content", description=long_desc)
     
     def test_text_sanitization(self):
@@ -287,7 +287,7 @@ class TestSecureQueryInput:
     
     def test_query_required(self):
         """Test that query is required."""
-        with pytest.raises(ValidationError):
+        with raises(ValidationError):
             SecureQueryInput()
     
     def test_query_too_long(self):
@@ -299,10 +299,10 @@ class TestSecureQueryInput:
     
     def test_limit_validation(self):
         """Test limit validation."""
-        with pytest.raises(ValidationError):
+        with raises(ValidationError):
             SecureQueryInput(query="test", limit=0)
         
-        with pytest.raises(ValidationError):
+        with raises(ValidationError):
             SecureQueryInput(query="test", limit=101)
     
     def test_default_limit(self):

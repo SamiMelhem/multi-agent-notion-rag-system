@@ -4,7 +4,7 @@ Tests for the configuration module.
 
 from pathlib import Path
 from unittest.mock import patch
-import pytest
+from pytest import raises
 
 from notion_rag.config import Config, ChromaDBConfig
 from notion_rag.security import SecureNotionConfig
@@ -80,7 +80,7 @@ def test_get_notion_api_key_not_found(mock_key_manager):
     mock_key_manager.retrieve_api_key.return_value = None
     config = Config()
     
-    with pytest.raises(ValueError, match="Notion API key not found"):
+    with raises(ValueError, match="Notion API key not found"):
         config.get_notion_api_key()
 
 
