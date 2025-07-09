@@ -2,10 +2,11 @@
 Configuration management for the Notion RAG system.
 """
 
-import keyring
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict, BaseSettings
+from pydantic import BaseModel, Field, ConfigDict
+from pydantic_settings import BaseSettings
+from .security import SecureKeyManager, SecureNotionConfig
 
 
 class ChromaDBConfig(BaseModel):
@@ -15,15 +16,8 @@ class ChromaDBConfig(BaseModel):
     collection_name: str = Field(default="notion_documents", description="Collection name")
 
 
-class NotionConfig(BaseModel):
-    """Notion API configuration settings."""
-    
-    api_key: Optional[str] = Field(default=None, description="Notion API key")
-    database_id: Optional[str] = Field(default=None, description="Default database ID")
-
-
 class Config(BaseSettings):
-    """Main configuration class."""
+    """Main configuration class with enhanced security."""
     
     # Application settings
     log_level: str = Field(default="INFO", description="Logging level")
@@ -31,7 +25,7 @@ class Config(BaseSettings):
     retry_delay: float = Field(default=1.0, description="Retry delay in seconds")
     
     # Component configs
-    notion: NotionConfig = Field(default_factory=NotionConfig)
+    notion: SecureNotionConfig = Field(default_factory=SecureNotionConfig)
     chroma: ChromaDBConfig = Field(default_factory=ChromaDBConfig)
     
     # Optional API keys
@@ -46,26 +40,46 @@ class Config(BaseSettings):
     )
     
     def get_notion_api_key(self) -> str:
-        """Get Notion API key from config or keyring."""
+        """Get Notion API key from config or secure keyring."""
         if self.notion.api_key:
             return self.notion.api_key
         
-        # Try to get from keyring
-        try:
-            key = keyring.get_password("notion-rag-cli", "notion_api_key")
-            if key:
-                return key
-        except ImportError:
-            pass
+        # Try to get from secure keyring
+        key = SecureKeyManager.retrieve_api_key("notion_api_key")
+        if key:
+            return key
         
         raise ValueError("Notion API key not found in config or keyring")
     
-    def set_notion_api_key(self, api_key: str) -> None:
-        """Set Notion API key in keyring."""
-        try:
-            keyring.set_password("notion-rag-cli", "notion_api_key", api_key)
-        except ImportError:
-            raise ValueError("Keyring not available for storing API key")
+    def set_notion_api_key(self, api_key: str) -> bool:
+        """Set Notion API key in secure keyring."""
+        return SecureKeyManager.store_api_key("notion_api_key", api_key)
+    
+    def get_openai_api_key(self) -> Optional[str]:
+        """Get OpenAI API key from config or secure keyring."""
+        if self.openai_api_key:
+            return self.openai_api_key
+        
+        return SecureKeyManager.retrieve_api_key("openai_api_key")
+    
+    def set_openai_api_key(self, api_key: str) -> bool:
+        """Set OpenAI API key in secure keyring."""
+        return SecureKeyManager.store_api_key("openai_api_key", api_key)
+    
+    def get_huggingface_api_key(self) -> Optional[str]:
+        """Get HuggingFace API key from config or secure keyring."""
+        if self.huggingface_api_key:
+            return self.huggingface_api_key
+        
+        return SecureKeyManager.retrieve_api_key("huggingface_api_key")
+    
+    def set_huggingface_api_key(self, api_key: str) -> bool:
+        """Set HuggingFace API key in secure keyring."""
+        return SecureKeyManager.store_api_key("huggingface_api_key", api_key)
+    
+    def delete_api_key(self, key_name: str) -> bool:
+        """Delete an API key from secure keyring."""
+        return SecureKeyManager.delete_api_key(key_name)
     
     def get_project_root(self) -> Path:
         """Get the project root directory."""
