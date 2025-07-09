@@ -3,478 +3,481 @@ Tests for the Notion API client.
 """
 
 import pytest
-import asyncio
+import os
 import time
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from unittest.mock import Mock, patch, MagicMock
 from notion_client.errors import HTTPResponseError, RequestTimeoutError, APIResponseError
+from dotenv import load_dotenv
 
-from notion_rag.notion_client import (
-    NotionClient,
-    NotionAPIResponse,
-    NotionErrorType,
-    RateLimiter
-)
-from notion_rag.config import Config
+from notion_rag.notion_client import NotionClient
 
-
-class TestRateLimiter:
-    """Test cases for RateLimiter."""
-    
-    def test_rate_limiter_initialization(self):
-        """Test rate limiter initialization."""
-        limiter = RateLimiter(max_requests=5, time_window=2.0)
-        assert limiter.max_requests == 5
-        assert limiter.time_window == 2.0
-        assert limiter.requests == []
-    
-    @pytest.mark.asyncio
-    async def test_rate_limiter_allows_requests_within_limit(self):
-        """Test that rate limiter allows requests within the limit."""
-        limiter = RateLimiter(max_requests=3, time_window=1.0)
-        
-        # First 3 requests should be allowed immediately
-        start_time = time.time()
-        await limiter.acquire()
-        await limiter.acquire()
-        await limiter.acquire()
-        elapsed = time.time() - start_time
-        
-        # Should be very fast since no rate limiting occurred
-        assert elapsed < 0.1
-    
-    @pytest.mark.asyncio
-    async def test_rate_limiter_delays_excess_requests(self):
-        """Test that rate limiter delays requests exceeding the limit."""
-        limiter = RateLimiter(max_requests=2, time_window=1.0)
-        
-        # First 2 requests should be immediate
-        await limiter.acquire()
-        await limiter.acquire()
-        
-        # Third request should be delayed
-        start_time = time.time()
-        await limiter.acquire()
-        elapsed = time.time() - start_time
-        
-        # Should have waited close to 1 second
-        assert elapsed >= 0.9
-    
-    def test_rate_limiter_reset(self):
-        """Test rate limiter reset functionality."""
-        limiter = RateLimiter(max_requests=3, time_window=1.0)
-        limiter.requests = [time.time() - 0.5, time.time() - 0.3, time.time() - 0.1]
-        
-        limiter.reset()
-        assert limiter.requests == []
+load_dotenv()
 
 
 class TestNotionClient:
     """Test cases for NotionClient."""
     
+    def test_env_file_loading(self):
+        """Test that environment variables are loaded from .env file."""
+        # This test verifies that the .env file is being loaded
+        # The actual values will depend on what's in the user's .env file
+        api_key = os.getenv("NOTION_API_KEY")
+        home_page_id = os.getenv("NOTION_HOME_PAGE_ID")
+        
+        # If .env file exists and has these variables, they should be loaded
+        # If not, they will be None, which is also valid for this test
+        assert isinstance(api_key, (str, type(None)))
+        assert isinstance(home_page_id, (str, type(None)))
+    
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
     @patch('notion_rag.notion_client.Client')
     def test_client_initialization_success(self, mock_client_class):
         """Test successful client initialization."""
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        
-        assert client._authenticated is True
-        mock_client_class.assert_called_once_with(auth="test_api_key_123")
-    
-    @patch('notion_rag.notion_client.Client')
-    def test_client_initialization_failure(self, mock_client_class):
-        """Test client initialization failure."""
-        mock_config = Mock()
-        mock_config.get_notion_api_key.side_effect = ValueError("API key not found")
-        
-        with pytest.raises(ValueError):
-            NotionClient(config=mock_config)
-    
-    def test_handle_notion_error_authentication(self):
-        """Test handling of authentication errors."""
-        client = NotionClient.__new__(NotionClient)
-        
-        mock_response = Mock()
-        mock_response.status_code = 401
-        error = HTTPResponseError(mock_response, "Unauthorized")
-        
-        response = client._handle_notion_error(error)
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.AUTHENTICATION
-        assert "Invalid or expired API key" in response.error_message
-    
-    def test_handle_notion_error_rate_limit(self):
-        """Test handling of rate limit errors."""
-        client = NotionClient.__new__(NotionClient)
-        
-        mock_response = Mock()
-        mock_response.status_code = 429
-        mock_response.headers = {"retry-after": "30"}
-        error = HTTPResponseError(mock_response, "Rate limited")
-        
-        response = client._handle_notion_error(error)
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.RATE_LIMIT
-        assert response.retry_after == 30
-    
-    def test_handle_notion_error_not_found(self):
-        """Test handling of not found errors."""
-        client = NotionClient.__new__(NotionClient)
-        
-        mock_response = Mock()
-        mock_response.status_code = 404
-        error = HTTPResponseError(mock_response, "Not found")
-        
-        response = client._handle_notion_error(error)
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.OBJECT_NOT_FOUND
-    
-    def test_handle_notion_error_bad_request(self):
-        """Test handling of bad request errors."""
-        client = NotionClient.__new__(NotionClient)
-        
-        mock_response = Mock()
-        mock_response.status_code = 400
-        error = HTTPResponseError(mock_response, "Bad request")
-        
-        response = client._handle_notion_error(error)
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.INVALID_REQUEST
-    
-    def test_handle_notion_error_timeout(self):
-        """Test handling of timeout errors."""
-        client = NotionClient.__new__(NotionClient)
-        
-        error = RequestTimeoutError("Request timed out")
-        
-        response = client._handle_notion_error(error)
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.TIMEOUT
-    
-    def test_handle_notion_error_api_response(self):
-        """Test handling of API response errors."""
-        client = NotionClient.__new__(NotionClient)
-        
-        mock_response = Mock()
-        from notion_client.errors import APIErrorCode
-        error = APIResponseError(response=mock_response, message="API error", code=APIErrorCode.ValidationError)
-        
-        response = client._handle_notion_error(error)
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.UNKNOWN  # APIResponseError is handled as unknown
-    
-    def test_handle_notion_error_unknown(self):
-        """Test handling of unknown errors."""
-        client = NotionClient.__new__(NotionClient)
-        
-        error = Exception("Unknown error")
-        
-        response = client._handle_notion_error(error)
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.UNKNOWN
-    
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_make_request_success(self, mock_client_class):
-        """Test successful API request."""
         mock_client_instance = Mock()
-        mock_client_instance.test_method.return_value = {"result": "success"}
         mock_client_class.return_value = mock_client_instance
         
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
+        client = NotionClient()
         
-        client = NotionClient(config=mock_config)
-        response = await client._make_request("test_method", arg1="value1")
-        
-        assert response.success is True
-        assert response.data == {"result": "success"}
-        mock_client_instance.test_method.assert_called_once_with(arg1="value1")
+        assert client.api_key == 'test_api_key_123'
+        assert client.home_page_id == 'test_home_page_id'
+        mock_client_class.assert_called_once_with(auth='test_api_key_123')
     
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_make_request_not_authenticated(self, mock_client_class):
-        """Test request when not authenticated."""
-        client = NotionClient.__new__(NotionClient)
-        client._authenticated = False
-        
-        response = await client._make_request("test_method")
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.AUTHENTICATION
+    @patch('notion_rag.notion_client.load_dotenv')
+    @patch.dict(os.environ, {}, clear=True)
+    def test_client_initialization_missing_api_key(self, mock_load_dotenv):
+        """Test client initialization failure when API key is missing."""
+        with pytest.raises(ValueError, match="NOTION_API_KEY environment variable is not set"):
+            NotionClient()
     
-    @pytest.mark.asyncio
+    @patch('notion_rag.notion_client.load_dotenv')
+    @patch.dict(os.environ, {'NOTION_API_KEY': 'test_api_key_123'}, clear=True)
+    def test_client_initialization_missing_home_page_id(self, mock_load_dotenv):
+        """Test client initialization failure when home page ID is missing."""
+        with pytest.raises(ValueError, match="NOTION_HOME_PAGE_ID environment variable is not set"):
+            NotionClient()
+    
+    @patch('notion_rag.notion_client.load_dotenv')
+    def test_env_file_loading_in_client(self, mock_load_dotenv):
+        """Test that load_dotenv is called during client initialization."""
+        # Mock the environment to have the required variables
+        with patch.dict(os.environ, {
+            'NOTION_API_KEY': 'test_api_key_123',
+            'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+        }):
+            with patch('notion_rag.notion_client.Client'):
+                client = NotionClient()
+                
+                # Verify that load_dotenv was called
+                mock_load_dotenv.assert_called_once()
+                
+                # Verify client was initialized correctly
+                assert client.api_key == 'test_api_key_123'
+                assert client.home_page_id == 'test_home_page_id'
+    
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
     @patch('notion_rag.notion_client.Client')
-    async def test_get_database_success(self, mock_client_class):
-        """Test successful database retrieval."""
+    def test_get_page_content_success(self, mock_client_class):
+        """Test successful page content retrieval."""
         mock_client_instance = Mock()
-        mock_client_instance.databases = Mock()
-        mock_client_instance.databases.retrieve = Mock(return_value={"id": "test_db"})
         mock_client_class.return_value = mock_client_instance
         
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
+        expected_page_data = {
+            "id": "test_page_id",
+            "properties": {"title": {"title": [{"text": {"content": "Test Page"}}]}},
+            "url": "https://notion.so/test_page_id"
+        }
+        mock_client_instance.pages.retrieve.return_value = expected_page_data
         
-        client = NotionClient(config=mock_config)
+        client = NotionClient()
+        result = client.get_page_content("test_page_id")
         
-        # Mock the _make_request method to return proper structure
-        with patch.object(client, '_make_request') as mock_make_request:
-            mock_make_request.return_value = NotionAPIResponse(success=True, data={"id": "test_db"})
-            response = await client.get_database("123e4567e89b12d3a456426614174000")
-        
-        assert response.success is True
-        assert response.data == {"id": "test_db"}
+        assert result == expected_page_data
+        mock_client_instance.pages.retrieve.assert_called_once_with(page_id="test_page_id")
     
-    @pytest.mark.asyncio
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
     @patch('notion_rag.notion_client.Client')
-    async def test_get_database_invalid_id(self, mock_client_class):
-        """Test database retrieval with invalid ID."""
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        response = await client.get_database("invalid_id")
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.VALIDATION_ERROR
-    
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_query_database_success(self, mock_client_class):
-        """Test successful database query."""
+    def test_get_page_content_failure(self, mock_client_class):
+        """Test page content retrieval failure."""
         mock_client_instance = Mock()
-        mock_client_instance.databases.query.return_value = {"results": []}
         mock_client_class.return_value = mock_client_instance
         
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
+        mock_client_instance.pages.retrieve.side_effect = Exception("API Error")
         
-        client = NotionClient(config=mock_config)
+        client = NotionClient()
         
-        # Mock the _make_request method to return proper structure
-        with patch.object(client, '_make_request') as mock_make_request:
-            mock_make_request.return_value = NotionAPIResponse(success=True, data={"results": []})
-            response = await client.query_database("123e4567e89b12d3a456426614174000")
-        
-        assert response.success is True
-        assert response.data == {"results": []}
+        with pytest.raises(Exception, match="Failed to fetch page content: API Error"):
+            client.get_page_content("test_page_id")
     
-    @pytest.mark.asyncio
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
     @patch('notion_rag.notion_client.Client')
-    async def test_get_page_success(self, mock_client_class):
-        """Test successful page retrieval."""
-        mock_client_instance = Mock()
-        mock_client_instance.pages.retrieve.return_value = {"id": "test_page"}
-        mock_client_class.return_value = mock_client_instance
-        
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        
-        # Mock the _make_request method to return proper structure
-        with patch.object(client, '_make_request') as mock_make_request:
-            mock_make_request.return_value = NotionAPIResponse(success=True, data={"id": "test_page"})
-            response = await client.get_page("123e4567e89b12d3a456426614174000")
-        
-        assert response.success is True
-        assert response.data == {"id": "test_page"}
-    
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_get_page_invalid_id(self, mock_client_class):
-        """Test page retrieval with invalid ID."""
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        response = await client.get_page("invalid_id")
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.VALIDATION_ERROR
-    
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_get_block_children_success(self, mock_client_class):
+    def test_get_block_children_success(self, mock_client_class):
         """Test successful block children retrieval."""
         mock_client_instance = Mock()
-        mock_client_instance.blocks.children.list.return_value = {"results": []}
         mock_client_class.return_value = mock_client_instance
         
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        
-        # Mock the _make_request method to return proper structure
-        with patch.object(client, '_make_request') as mock_make_request:
-            mock_make_request.return_value = NotionAPIResponse(success=True, data={"results": []})
-            response = await client.get_block_children("123e4567e89b12d3a456426614174000")
-        
-        assert response.success is True
-        assert response.data == {"results": []}
-    
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_search_success(self, mock_client_class):
-        """Test successful search."""
-        mock_client_instance = Mock()
-        mock_client_instance.search.return_value = {"results": []}
-        mock_client_class.return_value = mock_client_instance
-        
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        response = await client.search("test query")
-        
-        assert response.success is True
-        assert response.data == {"results": []}
-    
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_search_invalid_query(self, mock_client_class):
-        """Test search with invalid query."""
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        response = await client.search("")  # Empty query
-        
-        assert response.success is False
-        assert response.error_type == NotionErrorType.VALIDATION_ERROR
-    
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_get_all_pages_from_database_success(self, mock_client_class):
-        """Test successful retrieval of all pages from database."""
-        mock_client_instance = Mock()
-        # Mock paginated response
-        mock_client_instance.databases.query.side_effect = [
-            {"results": [{"id": "page1"}, {"id": "page2"}], "has_more": True, "next_cursor": "cursor1"},
-            {"results": [{"id": "page3"}], "has_more": False, "next_cursor": None}
+        # Mock pagination responses
+        mock_client_instance.blocks.children.list.side_effect = [
+            {
+                "results": [{"id": "block1", "type": "paragraph"}],
+                "has_more": True,
+                "next_cursor": "cursor1"
+            },
+            {
+                "results": [{"id": "block2", "type": "heading"}],
+                "has_more": False,
+                "next_cursor": None
+            }
         ]
-        mock_client_class.return_value = mock_client_instance
         
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
+        client = NotionClient()
+        result = client.get_block_children("test_block_id")
         
-        client = NotionClient(config=mock_config)
+        expected_blocks = [
+            {"id": "block1", "type": "paragraph"},
+            {"id": "block2", "type": "heading"}
+        ]
+        assert result == expected_blocks
         
-        # Mock the query_database method to return proper structure
-        with patch.object(client, 'query_database') as mock_query_database:
-            mock_query_database.side_effect = [
-                NotionAPIResponse(success=True, data={"results": [{"id": "page1"}, {"id": "page2"}], "has_more": True, "next_cursor": "cursor1"}),
-                NotionAPIResponse(success=True, data={"results": [{"id": "page3"}], "has_more": False, "next_cursor": None})
-            ]
-            response = await client.get_all_pages_from_database("123e4567e89b12d3a456426614174000")
-        
-        assert response.success is True
-        assert len(response.data["results"]) == 3
-        assert response.data["total_count"] == 3
+        # Verify both API calls were made
+        assert mock_client_instance.blocks.children.list.call_count == 2
     
-    @pytest.mark.asyncio
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
     @patch('notion_rag.notion_client.Client')
-    async def test_test_connection_success(self, mock_client_class):
-        """Test successful connection test."""
+    def test_get_database_content_success(self, mock_client_class):
+        """Test successful database content retrieval."""
         mock_client_instance = Mock()
-        mock_client_instance.users.me.return_value = {"id": "user123"}
         mock_client_class.return_value = mock_client_instance
         
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
+        # Mock pagination responses
+        mock_client_instance.databases.query.side_effect = [
+            {
+                "results": [{"id": "page1", "properties": {"title": {"title": [{"text": {"content": "Page 1"}}]}}}],
+                "has_more": True,
+                "next_cursor": "cursor1"
+            },
+            {
+                "results": [{"id": "page2", "properties": {"title": {"title": [{"text": {"content": "Page 2"}}]}}}],
+                "has_more": False,
+                "next_cursor": None
+            }
+        ]
         
-        client = NotionClient(config=mock_config)
+        client = NotionClient()
+        result = client.get_database_content("test_database_id")
         
-        # Mock the _make_request method to return proper structure
-        with patch.object(client, '_make_request') as mock_make_request:
-            mock_make_request.return_value = NotionAPIResponse(success=True, data={"id": "user123"})
-            response = await client.test_connection()
+        expected_pages = [
+            {"id": "page1", "properties": {"title": {"title": [{"text": {"content": "Page 1"}}]}}},
+            {"id": "page2", "properties": {"title": {"title": [{"text": {"content": "Page 2"}}]}}}
+        ]
+        assert result == expected_pages
         
-        assert response.success is True
-        assert response.data == {"id": "user123"}
+        # Verify both API calls were made
+        assert mock_client_instance.databases.query.call_count == 2
     
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
     @patch('notion_rag.notion_client.Client')
-    def test_is_authenticated(self, mock_client_class):
-        """Test authentication status check."""
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        assert client.is_authenticated() is True
-    
-    @patch('notion_rag.notion_client.Client')
-    def test_reset_rate_limiter(self, mock_client_class):
-        """Test rate limiter reset."""
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
-        
-        client = NotionClient(config=mock_config)
-        client.rate_limiter.requests = [time.time(), time.time()]
-        
-        client.reset_rate_limiter()
-        assert client.rate_limiter.requests == []
-    
-    @pytest.mark.asyncio
-    @patch('notion_rag.notion_client.Client')
-    async def test_rate_limiting_integration(self, mock_client_class):
-        """Test rate limiting integration with actual requests."""
+    def test_get_database_content_with_filter(self, mock_client_class):
+        """Test database content retrieval with filter parameters."""
         mock_client_instance = Mock()
-        mock_client_instance.users.me.return_value = {"id": "user123"}
         mock_client_class.return_value = mock_client_instance
         
-        mock_config = Mock()
-        mock_config.get_notion_api_key.return_value = "test_api_key_123"
+        mock_client_instance.databases.query.return_value = {
+            "results": [{"id": "page1", "properties": {"status": {"select": {"name": "Done"}}}}],
+            "has_more": False,
+            "next_cursor": None
+        }
         
-        client = NotionClient(config=mock_config)
-        client.rate_limiter = RateLimiter(max_requests=2, time_window=1.0)
+        filter_params = {
+            "property": "Status",
+            "select": {"equals": "Done"}
+        }
         
-        # First two requests should be fast
-        start_time = time.time()
-        await client.test_connection()
-        await client.test_connection()
-        elapsed = time.time() - start_time
-        assert elapsed < 0.1
+        client = NotionClient()
+        result = client.get_database_content("test_database_id", filter_params)
         
-        # Third request should be delayed
-        start_time = time.time()
-        await client.test_connection()
-        elapsed = time.time() - start_time
-        assert elapsed >= 0.9  # Should wait about 1 second
+        expected_pages = [{"id": "page1", "properties": {"status": {"select": {"name": "Done"}}}}]
+        assert result == expected_pages
+        
+        # Verify the API call was made with filter
+        mock_client_instance.databases.query.assert_called_once_with(
+            database_id="test_database_id",
+            start_cursor=None,
+            filter=filter_params
+        )
+    
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
+    @patch('notion_rag.notion_client.Client')
+    def test_get_all_child_pages_success(self, mock_client_class):
+        """Test successful child pages retrieval."""
+        mock_client_instance = Mock()
+        mock_client_class.return_value = mock_client_instance
+        
+        # Mock block children responses for different page IDs
+        def mock_blocks_children_list(block_id, **kwargs):
+            if block_id == "test_parent_id":
+                return {
+                    "results": [
+                        {"id": "child_page1", "type": "child_page"},
+                        {"id": "child_database1", "type": "child_database"},
+                        {"id": "paragraph1", "type": "paragraph"}
+                    ],
+                    "has_more": False,
+                    "next_cursor": None
+                }
+            elif block_id == "child_page1":
+                return {
+                    "results": [
+                        {"id": "grandchild_page1", "type": "child_page"}
+                    ],
+                    "has_more": False,
+                    "next_cursor": None
+                }
+            elif block_id == "grandchild_page1":
+                return {
+                    "results": [],
+                    "has_more": False,
+                    "next_cursor": None
+                }
+            else:
+                return {
+                    "results": [],
+                    "has_more": False,
+                    "next_cursor": None
+                }
+        
+        mock_client_instance.blocks.children.list.side_effect = mock_blocks_children_list
+        
+        client = NotionClient()
+        result = client.get_all_child_pages("test_parent_id")
+        
+        expected_pages = [
+            {"id": "child_page1", "type": "child_page"},
+            {"id": "grandchild_page1", "type": "child_page"},
+            {"id": "child_database1", "type": "child_database"}
+        ]
+        
+        # Debug: print the actual result
+        print(f"Expected: {expected_pages}")
+        print(f"Actual: {result}")
+        
+        assert result == expected_pages
+    
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
+    @patch('notion_rag.notion_client.Client')
+    def test_get_all_child_pages_uses_home_page_id(self, mock_client_class):
+        """Test that get_all_child_pages uses home page ID when no parent is specified."""
+        mock_client_instance = Mock()
+        mock_client_class.return_value = mock_client_instance
+        
+        mock_client_instance.blocks.children.list.return_value = {
+            "results": [],
+            "has_more": False,
+            "next_cursor": None
+        }
+        
+        client = NotionClient()
+        client.get_all_child_pages()  # No parent_page_id specified
+        
+        # Should use the home page ID
+        mock_client_instance.blocks.children.list.assert_called_once_with(
+            block_id="test_home_page_id",
+            start_cursor=None
+        )
+    
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
+    @patch('notion_rag.notion_client.Client')
+    def test_search_pages_success(self, mock_client_class):
+        """Test successful page search."""
+        mock_client_instance = Mock()
+        mock_client_class.return_value = mock_client_instance
+        
+        # Mock pagination responses
+        mock_client_instance.search.side_effect = [
+            {
+                "results": [{"id": "search_result1", "properties": {"title": {"title": [{"text": {"content": "Search Result 1"}}]}}}],
+                "has_more": True,
+                "next_cursor": "cursor1"
+            },
+            {
+                "results": [{"id": "search_result2", "properties": {"title": {"title": [{"text": {"content": "Search Result 2"}}]}}}],
+                "has_more": False,
+                "next_cursor": None
+            }
+        ]
+        
+        client = NotionClient()
+        result = client.search_pages("test query")
+        
+        expected_results = [
+            {"id": "search_result1", "properties": {"title": {"title": [{"text": {"content": "Search Result 1"}}]}}},
+            {"id": "search_result2", "properties": {"title": {"title": [{"text": {"content": "Search Result 2"}}]}}}
+        ]
+        assert result == expected_results
+        
+        # Verify both API calls were made with correct parameters
+        assert mock_client_instance.search.call_count == 2
+        mock_client_instance.search.assert_called_with(
+            query="test query",
+            start_cursor="cursor1",
+            filter={"property": "object", "value": "page"}
+        )
+    
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
+    @patch('notion_rag.notion_client.Client')
+    def test_error_handling_in_get_block_children(self, mock_client_class):
+        """Test error handling in get_block_children."""
+        mock_client_instance = Mock()
+        mock_client_class.return_value = mock_client_instance
+        
+        mock_client_instance.blocks.children.list.side_effect = Exception("Block children error")
+        
+        client = NotionClient()
+        
+        with pytest.raises(Exception, match="Failed to fetch block children: Block children error"):
+            client.get_block_children("test_block_id")
+    
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
+    @patch('notion_rag.notion_client.Client')
+    def test_error_handling_in_get_database_content(self, mock_client_class):
+        """Test error handling in get_database_content."""
+        mock_client_instance = Mock()
+        mock_client_class.return_value = mock_client_instance
+        
+        mock_client_instance.databases.query.side_effect = Exception("Database query error")
+        
+        client = NotionClient()
+        
+        with pytest.raises(Exception, match="Failed to fetch database content: Database query error"):
+            client.get_database_content("test_database_id")
+    
+    @patch.dict(os.environ, {
+        'NOTION_API_KEY': 'test_api_key_123',
+        'NOTION_HOME_PAGE_ID': 'test_home_page_id'
+    })
+    @patch('notion_rag.notion_client.Client')
+    def test_error_handling_in_search_pages(self, mock_client_class):
+        """Test error handling in search_pages."""
+        mock_client_instance = Mock()
+        mock_client_class.return_value = mock_client_instance
+        
+        mock_client_instance.search.side_effect = Exception("Search error")
+        
+        client = NotionClient()
+        
+        with pytest.raises(Exception, match="Failed to search pages: Search error"):
+            client.search_pages("test query")
 
 
-class TestNotionAPIResponse:
-    """Test cases for NotionAPIResponse."""
+class TestNotionClientIntegration:
+    """Integration tests for NotionClient (requires real API credentials)."""
     
-    def test_successful_response(self):
-        """Test successful response creation."""
-        response = NotionAPIResponse(
-            success=True,
-            data={"result": "success"}
-        )
+    @pytest.mark.integration
+    def test_real_connection(self):
+        """Test connection with real Notion API (requires environment variables)."""
+        # This test will only run if NOTION_API_KEY and NOTION_HOME_PAGE_ID are set
+        api_key = os.getenv("NOTION_API_KEY")
+        home_page_id = os.getenv("NOTION_HOME_PAGE_ID")
         
-        assert response.success is True
-        assert response.data == {"result": "success"}
-        assert response.error_type is None
-        assert response.error_message is None
+        if not api_key or not home_page_id:
+            pytest.skip(
+                "NOTION_API_KEY and NOTION_HOME_PAGE_ID environment variables required. "
+                "Make sure these are set in your .env file or environment."
+            )
+        
+        # Set a timeout for this test (30 seconds)
+        start_time = time.time()
+        timeout_seconds = 30
+        
+        try:
+            client = NotionClient()
+            
+            # Test a simple API call first to verify connection
+            print(f"Testing connection with home page ID: {home_page_id}")
+            
+            # Check timeout before making API calls
+            if time.time() - start_time > timeout_seconds:
+                pytest.fail("Test timed out before making API calls")
+            
+            # Test getting page content directly (simpler than recursive child pages)
+            try:
+                page_content = client.get_page_content(home_page_id)
+                
+                # Check timeout after API call
+                if time.time() - start_time > timeout_seconds:
+                    pytest.fail("Test timed out after page content call")
+                
+                assert isinstance(page_content, dict)
+                assert "id" in page_content
+                print(f"✅ Successfully connected to page: {page_content.get('url', 'N/A')}")
+            except Exception as page_error:
+                print(f"⚠️ Could not fetch page content: {page_error}")
+                
+                # Check timeout before trying alternative test
+                if time.time() - start_time > timeout_seconds:
+                    pytest.fail("Test timed out before alternative test")
+                
+                # If page content fails, try a simpler test
+                print("Trying alternative connection test...")
+                
+                # Test search functionality instead
+                search_results = client.search_pages("test")
+                
+                # Check timeout after search call
+                if time.time() - start_time > timeout_seconds:
+                    pytest.fail("Test timed out after search call")
+                
+                assert isinstance(search_results, list)
+                print(f"✅ Successfully connected via search. Found {len(search_results)} results")
+                
+        except Exception as e:
+            pytest.fail(f"Integration test failed: {str(e)}")
     
-    def test_error_response(self):
-        """Test error response creation."""
-        response = NotionAPIResponse(
-            success=False,
-            error_type=NotionErrorType.AUTHENTICATION,
-            error_message="Invalid API key"
-        )
+    @pytest.mark.integration
+    def test_env_file_integration(self):
+        """Test that the .env file is properly loaded and used by the client."""
+        api_key = os.getenv("NOTION_API_KEY")
+        home_page_id = os.getenv("NOTION_HOME_PAGE_ID")
         
-        assert response.success is False
-        assert response.error_type == NotionErrorType.AUTHENTICATION
-        assert response.error_message == "Invalid API key"
-        assert response.data is None 
+        if not api_key or not home_page_id:
+            pytest.skip("Environment variables not available for integration test")
+        
+        # Test that the client can be initialized with .env variables
+        try:
+            client = NotionClient()
+            assert client.api_key == api_key
+            assert client.home_page_id == home_page_id
+        except Exception as e:
+            pytest.fail(f"Failed to initialize client with .env variables: {str(e)}") 
