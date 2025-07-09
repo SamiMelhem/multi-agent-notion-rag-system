@@ -75,9 +75,95 @@ def format_rich_text_to_markdown(rich_text_list):
         if ann.get("strikethrough"):
             text = f'~~{text}~~'
         if ann.get("underline"):
-            text = f'_{text}_'  # Markdown doesn't support underline natively
+            text = f'__{text}__'  # Markdown doesn't support underline natively
         md += text
     return md
+
+# Universal dict for numbered_counters
+universal_numbered_counters = {}
+
+def process_blocks(blocks, client, indent_level=0, numbered_counters=None, last_was_numbered=None):
+    if numbered_counters is None:
+        numbered_counters = universal_numbered_counters
+    if last_was_numbered is None:
+        last_was_numbered = {}
+    for block in blocks:
+        display_block_content(block, client, indent_level, numbered_counters, last_was_numbered)
+        # If the block is not a numbered_list_item, reset the counter for this level
+        if block.get("type") != "numbered_list_item" and block.get("type") != "child_page":
+            if indent_level in numbered_counters:
+                del numbered_counters[indent_level]
+            if indent_level in last_was_numbered:
+                del last_was_numbered[indent_level]
+
+def display_block_content(block, client, indent_level=0, numbered_counters=None, last_was_numbered=None):
+    """
+    Recursively display block content, handling nested toggles and numbered lists.
+    Top-level numbered_list_items count up (1, 2, 3, ...), and sub-lists at each indentation level start from 1, but parent numbering continues for siblings. Numbering resets when a non-numbered_list_item is encountered at that level.
+    """
+    if numbered_counters is None:
+        numbered_counters = universal_numbered_counters
+    if last_was_numbered is None:
+        last_was_numbered = {}
+    indent = "  " * indent_level
+
+    # Numbered list item handling
+    if block.get("type") == "numbered_list_item":
+        # Create counter for this level if not present
+        if indent_level not in numbered_counters:
+            numbered_counters[indent_level] = 1
+        counter = numbered_counters[indent_level]
+        numbered_counters[indent_level] += 1
+        last_was_numbered[indent_level] = True
+        block_type = block["type"]
+        rich_text_list = block.get(block_type, {}).get("rich_text", [])
+        md = format_rich_text_to_markdown(rich_text_list) if rich_text_list else ""
+        print(f"{indent}{counter}. {md}")
+        # Handle children (sub-blocks, e.g. nested numbered lists)
+        if block.get("has_children"):
+            try:
+                children = client.get_block_children(block["id"])
+                # If children contain numbered_list_items, ensure a new counter for the child level
+                has_numbered = any(child.get("type") == "numbered_list_item" for child in children)
+                if has_numbered:
+                    numbered_counters[indent_level + 1] = 1
+                    last_was_numbered[indent_level + 1] = False
+                process_blocks(children, client, indent_level + 1, numbered_counters, last_was_numbered)
+            except Exception as e:
+                print(f"{indent}  ❌ Error loading numbered list children: {e}")
+        return
+    # Reset both the counter and numbered status for this level
+    if indent_level in numbered_counters:
+        del numbered_counters[indent_level]
+    last_was_numbered[indent_level] = False
+
+    # Toggle block handling
+    if block.get("type") == "toggle":
+        toggle_title = format_rich_text_to_markdown(block["toggle"]["rich_text"])
+        print(f"{indent}📋 {toggle_title}")
+        if block.get("has_children"):
+            try:
+                toggle_children = client.get_block_children(block["id"])
+                process_blocks(toggle_children, client, indent_level + 1, numbered_counters, last_was_numbered)
+            except Exception as e:
+                print(f"{indent}  ❌ Error loading toggle content: {e}")
+        return
+
+    # Regular block handling
+    if block.get("type") != "child_page":
+        block_type = block["type"]
+        rich_text_list = block.get(block_type, {}).get("rich_text", [])
+        if rich_text_list:
+            md = format_rich_text_to_markdown(rich_text_list)
+            print(f"{indent}• {md}")
+        # If this block has children, recurse
+        if block.get("has_children"):
+            try:
+                children = client.get_block_children(block["id"])
+                process_blocks(children, client, indent_level + 1, numbered_counters, last_was_numbered)
+            except Exception as e:
+                print(f"{indent}  ❌ Error loading block children: {e}")
+
 
 def extract_and_print_markdown_from_page(page_id, client):
     # 1. Print the home page title
@@ -105,6 +191,115 @@ def extract_and_print_markdown_from_page(page_id, client):
     print()
 
 
+def interactive_page_browser(client):
+    """
+    Interactive page browser that allows users to navigate through Notion pages
+    and select which pages to view.
+    """
+    # Stack to keep track of navigation history
+    page_stack = []
+    current_page_id = client.home_page_id
+    
+    while True:
+        # Get current page metadata and blocks
+        try:
+            metadata = client.get_page_content(current_page_id)
+            blocks = client.get_block_children(current_page_id)
+        except Exception as e:
+            print(f"❌ Error loading page: {e}")
+            if page_stack:
+                current_page_id = page_stack.pop()
+                continue
+            else:
+                print("❌ Cannot recover from error. Exiting.")
+                break
+        
+        # Get page title
+        title = metadata["properties"]["title"]["title"][0]["text"]["content"] if metadata["properties"]["title"]["title"] else "Untitled"
+        
+        # Clear screen and show current page info
+        print("\n" + "="*60)
+        print(f"📄 {title}")
+        print("="*60)
+        
+        # Extract and display page content
+        print("\n📝 Page Content:")
+        content_found = False
+        for block in blocks:
+            if block.get("type") != "child_page":
+                display_block_content(block, client)
+                content_found = True
+        
+        if not content_found:
+            print("(No content found)")
+        
+        # Find sub-pages
+        sub_pages = []
+        for block in blocks:
+            if block.get("type") == "child_page":
+                sub_pages.append({
+                    "id": block["id"],
+                    "title": block["child_page"].get("title", "Untitled")
+                })
+        
+        # Show navigation options
+        print(f"\n📂 Available Sub-pages ({len(sub_pages)}):")
+        if sub_pages:
+            for i, page in enumerate(sub_pages, 1):
+                print(f"  {i}. {page['title']}")
+        else:
+            print("  (No sub-pages found)")
+        
+        # Show navigation commands
+        print(f"\n🔧 Navigation Commands:")
+        print(f"  • Enter a number (1-{len(sub_pages)}) to navigate to that sub-page")
+        print(f"  • 'back' to go to the previous page")
+        print(f"  • 'home' to go to the home page")
+        print(f"  • 'quit' or 'exit' to exit")
+        
+        # Get user input
+        try:
+            choice = input(f"\n🎯 Your choice: ").strip().lower()
+            
+            if choice in ['quit', 'exit', 'q']:
+                print("👋 Goodbye!")
+                break
+            
+            elif choice == 'back':
+                if page_stack:
+                    current_page_id = page_stack.pop()
+                    print(f"⬅️ Going back...")
+                else:
+                    print("❌ Already at the root page!")
+            
+            elif choice == 'home':
+                if current_page_id != client.home_page_id:
+                    page_stack = []  # Clear history when going home
+                    current_page_id = client.home_page_id
+                    print(f"🏠 Going to home page...")
+                else:
+                    print("❌ Already at the home page!")
+            
+            elif choice.isdigit():
+                page_num = int(choice)
+                if 1 <= page_num <= len(sub_pages):
+                    selected_page = sub_pages[page_num - 1]
+                    page_stack.append(current_page_id)  # Save current page to history
+                    current_page_id = selected_page["id"]
+                    print(f"➡️ Navigating to: {selected_page['title']}")
+                else:
+                    print(f"❌ Invalid page number. Please enter 1-{len(sub_pages)}")
+            
+            else:
+                print("❌ Invalid choice. Please try again.")
+                
+        except KeyboardInterrupt:
+            print("\n\n👋 Goodbye!")
+            break
+        except Exception as e:
+            print(f"❌ Error processing input: {e}")
+
+
 def demo_fetch_pages():
     """Demonstrate fetching pages from Notion."""
     try:
@@ -121,7 +316,7 @@ def demo_fetch_pages():
 
         # # Print the blocks (content) for the home page
         # print("================ HOME PAGE BLOCKS ================" )
-        # blocks = client.get_block_children(home_page_id)
+        # blocks = client.get_block_children(client.home_page_id)
         # print(json.dumps(blocks, indent=2, default=str))
         # print("==================================================\n")
 
@@ -139,10 +334,15 @@ def demo_fetch_pages():
         #     print(json.dumps(sub_page_blocks, indent=2, default=str))
         #     print("============================================\n")
 
-        # Call the new markdown extraction function
-        print("\n================ MARKDOWN EXTRACTION ================")
-        extract_and_print_markdown_from_page(client.home_page_id, client)
-        print("====================================================\n")
+        # # Call the new markdown extraction function
+        # print("\n================ MARKDOWN EXTRACTION ================")
+        # extract_and_print_markdown_from_page(client.home_page_id, client)
+        # print("====================================================\n")
+
+        # Start interactive browser
+        print("\n================ INTERACTIVE PAGE BROWSER ================")
+        interactive_page_browser(client)
+        print("==========================================================\n")
 
         # # 1. Get all child pages from home page
         # print("📋 Fetching all child pages from home page...")
