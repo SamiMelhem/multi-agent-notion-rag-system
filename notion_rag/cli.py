@@ -3,8 +3,6 @@ Command-line interface for the Notion RAG system.
 """
 
 import click
-from typing import Optional
-
 from .config import Config
 
 

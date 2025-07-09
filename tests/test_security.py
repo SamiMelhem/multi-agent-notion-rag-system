@@ -2,8 +2,8 @@
 Tests for the security module.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from pytest import pytest
+from unittest.mock import patch
 from pydantic import ValidationError
 
 from notion_rag.security import (

@@ -2,26 +2,17 @@
 Notion API client with authentication, error handling, and rate limiting.
 """
 
-import asyncio
-import time
-import logging
-from typing import Dict, List, Optional, Any, Union
+from asyncio import Lock, sleep
+from time import time
+from logging import getLogger
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
-import os
+from os import getenv
 from notion_client import Client
 from dotenv import load_dotenv
 
-from notion_client.errors import (
-    RequestTimeoutError,
-    HTTPResponseError,
-    APIResponseError
-)
-
-from .config import Config
-from .security import InputValidator, SecureQueryInput
-
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class NotionErrorType(Enum):
@@ -59,12 +50,12 @@ class RateLimiter:
         self.max_requests = max_requests
         self.time_window = time_window
         self.requests = []
-        self._lock = asyncio.Lock()
+        self._lock = Lock()
     
     async def acquire(self) -> None:
         """Acquire permission to make a request."""
         async with self._lock:
-            now = time.time()
+            now = time()
             
             # Remove old requests outside the time window
             self.requests = [req_time for req_time in self.requests 
@@ -75,7 +66,7 @@ class RateLimiter:
                 sleep_time = self.time_window - (now - self.requests[0])
                 if sleep_time > 0:
                     logger.info(f"Rate limit reached, sleeping for {sleep_time:.2f} seconds")
-                    await asyncio.sleep(sleep_time)
+                    await sleep(sleep_time)
                     # Remove the oldest request after sleeping
                     self.requests.pop(0)
             
@@ -94,8 +85,8 @@ class NotionClient:
         """Initialize the Notion client with API credentials."""
         load_dotenv()
         
-        self.api_key = os.getenv("NOTION_API_KEY")
-        self.home_page_id = os.getenv("NOTION_HOME_PAGE_ID")
+        self.api_key = getenv("NOTION_API_KEY")
+        self.home_page_id = getenv("NOTION_HOME_PAGE_ID")
         
         if not self.api_key:
             raise ValueError("NOTION_API_KEY environment variable is not set")

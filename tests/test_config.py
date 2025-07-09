@@ -3,7 +3,7 @@ Tests for the configuration module.
 """
 
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 from notion_rag.config import Config, ChromaDBConfig

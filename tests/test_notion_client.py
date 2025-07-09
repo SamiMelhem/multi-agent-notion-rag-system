@@ -2,11 +2,10 @@
 Tests for the Notion API client.
 """
 
-import pytest
-import os
-import time
-from unittest.mock import Mock, patch, MagicMock
-from notion_client.errors import HTTPResponseError, RequestTimeoutError, APIResponseError
+from pytest import pytest
+from os import getenv, environ
+from time import time
+from unittest.mock import Mock, patch
 from dotenv import load_dotenv
 
 from notion_rag.notion_client import NotionClient
@@ -21,15 +20,15 @@ class TestNotionClient:
         """Test that environment variables are loaded from .env file."""
         # This test verifies that the .env file is being loaded
         # The actual values will depend on what's in the user's .env file
-        api_key = os.getenv("NOTION_API_KEY")
-        home_page_id = os.getenv("NOTION_HOME_PAGE_ID")
+        api_key = getenv("NOTION_API_KEY")
+        home_page_id = getenv("NOTION_HOME_PAGE_ID")
         
         # If .env file exists and has these variables, they should be loaded
         # If not, they will be None, which is also valid for this test
         assert isinstance(api_key, (str, type(None)))
         assert isinstance(home_page_id, (str, type(None)))
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -46,14 +45,14 @@ class TestNotionClient:
         mock_client_class.assert_called_once_with(auth='test_api_key_123')
     
     @patch('notion_rag.notion_client.load_dotenv')
-    @patch.dict(os.environ, {}, clear=True)
+    @patch.dict(environ, {}, clear=True)
     def test_client_initialization_missing_api_key(self, mock_load_dotenv):
         """Test client initialization failure when API key is missing."""
         with pytest.raises(ValueError, match="NOTION_API_KEY environment variable is not set"):
             NotionClient()
     
     @patch('notion_rag.notion_client.load_dotenv')
-    @patch.dict(os.environ, {'NOTION_API_KEY': 'test_api_key_123'}, clear=True)
+    @patch.dict(environ, {'NOTION_API_KEY': 'test_api_key_123'}, clear=True)
     def test_client_initialization_missing_home_page_id(self, mock_load_dotenv):
         """Test client initialization failure when home page ID is missing."""
         with pytest.raises(ValueError, match="NOTION_HOME_PAGE_ID environment variable is not set"):
@@ -63,7 +62,7 @@ class TestNotionClient:
     def test_env_file_loading_in_client(self, mock_load_dotenv):
         """Test that load_dotenv is called during client initialization."""
         # Mock the environment to have the required variables
-        with patch.dict(os.environ, {
+        with patch.dict(environ, {
             'NOTION_API_KEY': 'test_api_key_123',
             'NOTION_HOME_PAGE_ID': 'test_home_page_id'
         }):
@@ -77,7 +76,7 @@ class TestNotionClient:
                 assert client.api_key == 'test_api_key_123'
                 assert client.home_page_id == 'test_home_page_id'
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -100,7 +99,7 @@ class TestNotionClient:
         assert result == expected_page_data
         mock_client_instance.pages.retrieve.assert_called_once_with(page_id="test_page_id")
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -117,7 +116,7 @@ class TestNotionClient:
         with pytest.raises(Exception, match="Failed to fetch page content: API Error"):
             client.get_page_content("test_page_id")
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -153,7 +152,7 @@ class TestNotionClient:
         # Verify both API calls were made
         assert mock_client_instance.blocks.children.list.call_count == 2
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -189,7 +188,7 @@ class TestNotionClient:
         # Verify both API calls were made
         assert mock_client_instance.databases.query.call_count == 2
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -223,7 +222,7 @@ class TestNotionClient:
             filter=filter_params
         )
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -283,7 +282,7 @@ class TestNotionClient:
         
         assert result == expected_pages
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -308,7 +307,7 @@ class TestNotionClient:
             start_cursor=None
         )
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -349,7 +348,7 @@ class TestNotionClient:
             filter={"property": "object", "value": "page"}
         )
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -366,7 +365,7 @@ class TestNotionClient:
         with pytest.raises(Exception, match="Failed to fetch block children: Block children error"):
             client.get_block_children("test_block_id")
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -383,7 +382,7 @@ class TestNotionClient:
         with pytest.raises(Exception, match="Failed to fetch database content: Database query error"):
             client.get_database_content("test_database_id")
     
-    @patch.dict(os.environ, {
+    @patch.dict(environ, {
         'NOTION_API_KEY': 'test_api_key_123',
         'NOTION_HOME_PAGE_ID': 'test_home_page_id'
     })
@@ -408,8 +407,8 @@ class TestNotionClientIntegration:
     def test_real_connection(self):
         """Test connection with real Notion API (requires environment variables)."""
         # This test will only run if NOTION_API_KEY and NOTION_HOME_PAGE_ID are set
-        api_key = os.getenv("NOTION_API_KEY")
-        home_page_id = os.getenv("NOTION_HOME_PAGE_ID")
+        api_key = getenv("NOTION_API_KEY")
+        home_page_id = getenv("NOTION_HOME_PAGE_ID")
         
         if not api_key or not home_page_id:
             pytest.skip(
@@ -418,7 +417,7 @@ class TestNotionClientIntegration:
             )
         
         # Set a timeout for this test (30 seconds)
-        start_time = time.time()
+        start_time = time()
         timeout_seconds = 30
         
         try:
@@ -428,7 +427,7 @@ class TestNotionClientIntegration:
             print(f"Testing connection with home page ID: {home_page_id}")
             
             # Check timeout before making API calls
-            if time.time() - start_time > timeout_seconds:
+            if time() - start_time > timeout_seconds:
                 pytest.fail("Test timed out before making API calls")
             
             # Test getting page content directly (simpler than recursive child pages)
@@ -436,7 +435,7 @@ class TestNotionClientIntegration:
                 page_content = client.get_page_content(home_page_id)
                 
                 # Check timeout after API call
-                if time.time() - start_time > timeout_seconds:
+                if time() - start_time > timeout_seconds:
                     pytest.fail("Test timed out after page content call")
                 
                 assert isinstance(page_content, dict)
@@ -446,7 +445,7 @@ class TestNotionClientIntegration:
                 print(f"⚠️ Could not fetch page content: {page_error}")
                 
                 # Check timeout before trying alternative test
-                if time.time() - start_time > timeout_seconds:
+                if time() - start_time > timeout_seconds:
                     pytest.fail("Test timed out before alternative test")
                 
                 # If page content fails, try a simpler test
@@ -456,7 +455,7 @@ class TestNotionClientIntegration:
                 search_results = client.search_pages("test")
                 
                 # Check timeout after search call
-                if time.time() - start_time > timeout_seconds:
+                if time() - start_time > timeout_seconds:
                     pytest.fail("Test timed out after search call")
                 
                 assert isinstance(search_results, list)
@@ -468,8 +467,8 @@ class TestNotionClientIntegration:
     @pytest.mark.integration
     def test_env_file_integration(self):
         """Test that the .env file is properly loaded and used by the client."""
-        api_key = os.getenv("NOTION_API_KEY")
-        home_page_id = os.getenv("NOTION_HOME_PAGE_ID")
+        api_key = getenv("NOTION_API_KEY")
+        home_page_id = getenv("NOTION_HOME_PAGE_ID")
         
         if not api_key or not home_page_id:
             pytest.skip("Environment variables not available for integration test")

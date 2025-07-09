@@ -3,16 +3,14 @@ Security utilities for the Notion RAG system.
 Provides secure API key management, input validation, and sanitization.
 """
 
-import re
-import secrets
-import string
-from typing import Optional, Dict, Any
-from pathlib import Path
-import keyring
-from pydantic import BaseModel, Field, field_validator, ValidationError
-import logging
+from re import match, sub
+from string import ascii_letters, digits, hexdigits
+from typing import Optional
+from keyring import set_password, get_password, delete_password
+from pydantic import BaseModel, Field, field_validator
+from logging import getLogger
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class SecureKeyManager:
@@ -39,7 +37,7 @@ class SecureKeyManager:
             raise ValueError("Invalid API key format")
         
         try:
-            keyring.set_password(cls.SERVICE_NAME, key_name, api_key)
+            set_password(cls.SERVICE_NAME, key_name, api_key)
             logger.info(f"API key '{key_name}' stored successfully")
             return True
         except Exception as e:
@@ -61,7 +59,7 @@ class SecureKeyManager:
             raise ValueError(f"Invalid key name: {key_name}")
         
         try:
-            key = keyring.get_password(cls.SERVICE_NAME, key_name)
+            key = get_password(cls.SERVICE_NAME, key_name)
             if key:
                 logger.info(f"API key '{key_name}' retrieved successfully")
                 return key
@@ -87,7 +85,7 @@ class SecureKeyManager:
             raise ValueError(f"Invalid key name: {key_name}")
         
         try:
-            keyring.delete_password(cls.SERVICE_NAME, key_name)
+            delete_password(cls.SERVICE_NAME, key_name)
             logger.info(f"API key '{key_name}' deleted successfully")
             return True
         except Exception as e:
@@ -114,7 +112,7 @@ class SecureKeyManager:
         """Validate key name format."""
         if not key_name or not isinstance(key_name, str):
             return False
-        return bool(re.match(r'^[a-zA-Z0-9_-]+$', key_name))
+        return bool(match(r'^[a-zA-Z0-9_-]+$', key_name))
     
     @staticmethod
     def _validate_api_key(api_key: str) -> bool:
@@ -127,7 +125,7 @@ class SecureKeyManager:
             return False
         
         # Check for common API key patterns
-        allowed_chars = string.ascii_letters + string.digits + '-_.'
+        allowed_chars = ascii_letters + digits + '-_.'
         return all(c in allowed_chars for c in api_key)
 
 
@@ -154,7 +152,7 @@ class InputValidator:
             text = str(text)
         
         # Remove null bytes and control characters except newlines and tabs
-        text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
+        text = sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
         
         # Limit length
         max_len = max_length or cls.MAX_TEXT_LENGTH
@@ -183,7 +181,7 @@ class InputValidator:
         clean_id = page_id.replace('-', '')
         
         # Should be 32 hexadecimal characters
-        return len(clean_id) == 32 and all(c in string.hexdigits for c in clean_id)
+        return len(clean_id) == 32 and all(c in hexdigits for c in clean_id)
     
     @classmethod
     def validate_database_id(cls, database_id: str) -> bool:

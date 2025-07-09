@@ -4,8 +4,7 @@ Demo script to fetch and display pages from Notion.
 This script demonstrates how to use the NotionClient to fetch pages and databases.
 """
 
-import json
-from typing import Dict, Any, List
+from typing import Dict, Any
 from notion_rag.notion_client import NotionClient
 
 
@@ -75,7 +74,7 @@ def format_rich_text_to_markdown(rich_text_list):
         if ann.get("strikethrough"):
             text = f'~~{text}~~'
         if ann.get("underline"):
-            text = f'__{text}__'  # Markdown doesn't support underline natively
+            text = f'___{text}___'  # Markdown doesn't support underline natively
         md += text
     return md
 
@@ -115,8 +114,7 @@ def display_block_content(block, client, indent_level=0, numbered_counters=None,
         counter = numbered_counters[indent_level]
         numbered_counters[indent_level] += 1
         last_was_numbered[indent_level] = True
-        block_type = block["type"]
-        rich_text_list = block.get(block_type, {}).get("rich_text", [])
+        rich_text_list = block.get(block["type"], {}).get("rich_text", [])
         md = format_rich_text_to_markdown(rich_text_list) if rich_text_list else ""
         print(f"{indent}{counter}. {md}")
         # Handle children (sub-blocks, e.g. nested numbered lists)
@@ -133,9 +131,10 @@ def display_block_content(block, client, indent_level=0, numbered_counters=None,
                 print(f"{indent}  ❌ Error loading numbered list children: {e}")
         return
     # Reset both the counter and numbered status for this level
-    if indent_level in numbered_counters:
-        del numbered_counters[indent_level]
-    last_was_numbered[indent_level] = False
+    if numbered_counters != {}:
+        if indent_level in numbered_counters:
+            del numbered_counters[indent_level]
+        last_was_numbered[indent_level] = False
 
     # Toggle block handling
     if block.get("type") == "toggle":
@@ -151,8 +150,7 @@ def display_block_content(block, client, indent_level=0, numbered_counters=None,
 
     # Regular block handling
     if block.get("type") != "child_page":
-        block_type = block["type"]
-        rich_text_list = block.get(block_type, {}).get("rich_text", [])
+        rich_text_list = block.get(block["type"], {}).get("rich_text", [])
         if rich_text_list:
             md = format_rich_text_to_markdown(rich_text_list)
             print(f"{indent}• {md}")
@@ -183,8 +181,7 @@ def extract_and_print_markdown_from_page(page_id, client):
     # 3. Markdown-formatted bullet list of non-page blocks
     for block in blocks:
         if block.get("type") != "child_page":
-            block_type = block["type"]
-            rich_text_list = block.get(block_type, {}).get("rich_text", [])
+            rich_text_list = block.get(block["type"], {}).get("rich_text", [])
             if rich_text_list:
                 md = format_rich_text_to_markdown(rich_text_list)
                 print(f"- {md}")
