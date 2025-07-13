@@ -1,125 +1,108 @@
 # Notion RAG CLI
 
-A multi-agent RAG (Retrieval-Augmented Generation) system for Notion API with command-line interface.
+A streamlined Retrieval-Augmented Generation (RAG) system for Notion that fetches content, loads it into a vector database, and provides fast semantic search.
 
-## Features
+## 🚀 Quick Start
 
-- 🔍 **Vector Database Integration**: ChromaDB for efficient document search and retrieval
-- 🔗 **Notion API Integration**: Seamless access to Notion workspaces and pages
-- 🛡️ **Secure API Key Management**: Keyring integration for secure credential storage
-- 🔄 **Retry Logic**: Robust error handling with configurable retry mechanisms
-- 📝 **CLI Interface**: User-friendly command-line interface built with Click
-- ✅ **Input Validation**: Pydantic models for robust data validation
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd notion_rag_cli
+### 1. Setup Environment
+Create a `.env` file:
+```env
+NOTION_API_KEY=your_notion_api_key_here
+NOTION_HOME_PAGE_ID=your_notion_home_page_id_here
 ```
 
-2. Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
+### 2. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Install in development mode:
+### 3. Run the Complete Workflow
 ```bash
-pip install -e .
+# Fetch, load, and start interactive search
+python notion_rag_workflow.py
+
+# Or with a specific page ID
+python notion_rag_workflow.py <page_id>
+
+# Or with a specific search query
+python notion_rag_workflow.py <page_id> "your search query"
 ```
 
-## Configuration
+## 📁 Essential Files
 
-1. Copy the example environment file:
+- **`notion_rag_workflow.py`** - Main workflow script (fetch → load → search)
+- **`performance_test.py`** - Performance testing and benchmarking
+- **`search_notion_vector.py`** - Standalone search tool
+- **`turbo_notion_fetch.py`** - High-performance Notion content fetcher
+- **`notion_rag/`** - Core RAG system modules
+
+## 🔧 Usage Examples
+
+### Complete Workflow
 ```bash
-cp .env.example .env
+# Interactive mode (fetch + load + search)
+python notion_rag_workflow.py
+
+# Single search query
+python notion_rag_workflow.py "cybersecurity best practices"
 ```
 
-2. Edit `.env` and add your Notion API credentials:
-```
-NOTION_API_KEY=your_notion_api_key_here
-NOTION_DATABASE_ID=your_database_id_here
+### Performance Testing
+```bash
+# Test complete workflow with timing
+python performance_test.py
+
+# Test with specific page
+python performance_test.py <page_id>
 ```
 
-## Usage
+### Standalone Search
+```bash
+# Interactive search (requires existing vector database)
+python search_notion_vector.py
 
-### Basic Commands
+# Single search query
+python search_notion_vector.py "your query"
+```
+
+## 🎯 Features
+
+- ✅ **Recursive Fetching**: Automatically fetches main page + all child pages
+- ✅ **Vector Database**: ChromaDB with semantic search
+- ✅ **Fast Search**: Sub-second query response times
+- ✅ **Content Chunking**: Intelligent text segmentation
+- ✅ **Metadata Preservation**: Page IDs, URLs, titles, etc.
+- ✅ **Performance Monitoring**: Built-in timing and statistics
+
+## 📊 Performance
+
+Typical performance metrics:
+- **Fetch Time**: ~0.8s for 9 pages
+- **Load Time**: ~14s for 54K characters
+- **Search Time**: ~1.4s average per query
+- **Processing Rate**: ~4K chars/sec
+
+## 🔍 Search Examples
 
 ```bash
-# Initialize the RAG system
-notion-rag init
+# Search for specific topics
+python notion_rag_workflow.py "security controls"
 
-# Index Notion pages
-notion-rag index --database-id <your-database-id>
+# Search for processes
+python notion_rag_workflow.py "incident response"
 
-# Search documents
-notion-rag search "your query here"
-
-# Chat with your documents
-notion-rag chat
+# Search for concepts
+python notion_rag_workflow.py "threat modeling"
 ```
 
-### API Key Management
+## 🚀 Next Steps
 
-The CLI uses keyring for secure API key storage. On first run, you'll be prompted to enter your Notion API key.
+The system is ready for LLM integration (RAG):
+1. Use search results as context for LLM
+2. Implement response generation
+3. Add conversation memory
+4. Deploy as a chatbot
 
-## Development
+## 📝 License
 
-### Setup Development Environment
-
-```bash
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Format code
-black src/ tests/
-
-# Type checking
-mypy src/
-```
-
-### Project Structure
-
-```
-notion_rag_cli/
-├── src/notion_rag/          # Main package
-│   ├── __init__.py
-│   ├── cli.py              # CLI interface
-│   ├── models.py           # Pydantic models
-│   ├── notion_client.py    # Notion API client
-│   ├── vector_store.py     # ChromaDB integration
-│   └── utils.py            # Utility functions
-├── tests/                   # Test suite
-├── docs/                    # Documentation
-├── requirements.txt         # Dependencies
-├── pyproject.toml          # Project configuration
-└── README.md               # This file
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Requirements
-
-- Python 3.8 or higher
-- Notion API access token
-- ChromaDB for vector storage 
+MIT License - see LICENSE file for details. 

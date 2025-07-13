@@ -108,18 +108,6 @@ def test_get_openai_api_key_from_config(mock_key_manager):
     mock_key_manager.retrieve_api_key.assert_not_called()
 
 
-# @patch('notion_rag.config.SecureKeyManager')
-# def test_get_openai_api_key_from_keyring(mock_key_manager):
-#     """Test getting OpenAI API key from keyring."""
-#     mock_key_manager.retrieve_api_key.return_value = "keyring_openai_key_123"
-#     config = Config()
-    
-#     result = config.get_openai_api_key()
-    
-#     assert result == "keyring_openai_key_123"
-#     mock_key_manager.retrieve_api_key.assert_called_once_with("openai_api_key")
-
-
 @patch('notion_rag.config.SecureKeyManager')
 def test_set_openai_api_key(mock_key_manager):
     """Test setting OpenAI API key."""

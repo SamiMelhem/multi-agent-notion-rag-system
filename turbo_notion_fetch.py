@@ -12,6 +12,9 @@ from asyncio import Lock as AsyncLock, Semaphore, gather, run
 from threading import Lock as ThreadLock
 import json
 import asyncio
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 load_dotenv()
 
@@ -273,6 +276,9 @@ class TurboRateLimiter:
 cache = TurboCache()
 rate_limiter = TurboRateLimiter(max_requests=MAX_CONCURRENT_REQUESTS, time_window=1.0)
 
+def safe_print(s):
+    print(s)
+
 async def fetch_block_children_turbo(client, block_id: str, visited: Set[str]) -> List[Dict[str, Any]]:
     """Turbo-fast block fetching with minimal overhead."""
     if block_id in visited:
@@ -329,11 +335,11 @@ async def fetch_all_blocks_turbo(root_id: str, _recursive: bool = False) -> Dict
     cached_data = cache.get(root_id)
     if cached_data:
         if not _recursive:
-            print(f"⚡ Using cached data for page: {root_id}")
+            print(f"Using cached data for page: {root_id}")
         return cached_data.data
     
     if not _recursive:
-        print(f"🚀 Starting turbo fetch for page: {root_id}")
+        print(f"Starting turbo fetch for page: {root_id}")
     start_time = time()
     
     # Create client
@@ -378,21 +384,21 @@ async def fetch_all_blocks_turbo(root_id: str, _recursive: bool = False) -> Dict
             elapsed = time() - start_time
             if elapsed > 0:
                 rate = total_blocks_processed / elapsed
-                print(f"⚡ Processed {total_blocks_processed} blocks at {rate:.0f} blocks/sec")
+                print(f"Processed {total_blocks_processed} blocks at {rate:.0f} blocks/sec")
     
     # Cache this page
     cache.set(root_id, block_tree)
     
     # If this is the top-level fetch, recursively fetch all child pages in parallel
     if not _recursive and child_page_ids:
-        print(f"📄 Fetching {len(child_page_ids)} child pages in parallel...")
+        print(f"Fetching {len(child_page_ids)} child pages in parallel...")
         child_tasks = [fetch_all_blocks_turbo(child_id, _recursive=True) for child_id in child_page_ids]
         await gather(*child_tasks, return_exceptions=True)
-        print(f"✅ All child pages cached!")
+        print(f"All child pages cached!")
     
     if not _recursive:
         total_time = time() - start_time
-        print(f"✅ Completed in {total_time:.2f}s! Total blocks: {total_blocks_processed}")
+        print(f"Completed in {total_time:.2f}s! Total blocks: {total_blocks_processed}")
     
     return block_tree
 
@@ -402,37 +408,37 @@ async def fetch_page_by_id(page_id: str) -> Dict[str, Any]:
         print("Please set NOTION_API_KEY in your .env file.")
         return {}
     
-    print(f"🚀 Fetching page: {page_id}")
+    print(f"Fetching page: {page_id}")
     return await fetch_all_blocks_turbo(page_id)
 
 async def fetch_child_page(page_id: str) -> Dict[str, Any]:
     """Fetch a specific child page and cache it."""
-    print(f"📄 Fetching child page: {page_id}")
+    print(f"Fetching child page: {page_id}")
     return await fetch_all_blocks_turbo(page_id)
 
 async def fetch_all_children(page_id: str) -> None:
     """Fetch all child pages of a specific page recursively."""
-    print(f"🌳 Fetching all children of page: {page_id}")
+    print(f"Fetching all children of page: {page_id}")
     
     # First get the page to see its child references
     cached_data = cache.get(page_id)
     if not cached_data:
-        print(f"❌ Page {page_id} not found in cache. Please fetch it first.")
+        print(f"Page {page_id} not found in cache. Please fetch it first.")
         return
     
     # Extract child page references
     child_pages = get_child_page_references(cached_data.data)
     if not child_pages:
-        print(f"📄 No child pages found for {page_id}")
+        print(f"No child pages found for {page_id}")
         return
     
-    print(f"📄 Found {len(child_pages)} child pages to fetch...")
+    print(f"Found {len(child_pages)} child pages to fetch...")
     
     # Fetch all child pages in parallel
     child_tasks = [fetch_all_blocks_turbo(child["id"], _recursive=True) for child in child_pages]
     await gather(*child_tasks, return_exceptions=True)
     
-    print(f"✅ All {len(child_pages)} child pages cached!")
+    print(f"All {len(child_pages)} child pages cached!")
 
 def get_child_page_references(block_tree: Dict[str, Any]) -> List[Dict[str, str]]:
     """Extract child page references from a block tree."""
@@ -491,38 +497,38 @@ def render_markdown_turbo(block_tree, root_id, indent=0):
         
         if block_type == "heading_1":
             output = f"{prefix}# {text}"
-            print(output)
+            safe_print(output)
             total_chars += len(output)
         elif block_type == "heading_2":
             output = f"{prefix}## {text}"
-            print(output)
+            safe_print(output)
             total_chars += len(output)
         elif block_type == "heading_3":
             output = f"{prefix}### {text}"
-            print(output)
+            safe_print(output)
             total_chars += len(output)
         elif block_type == "bulleted_list_item":
             output = f"{prefix}- {text}"
-            print(output)
+            safe_print(output)
             total_chars += len(output)
         elif block_type == "numbered_list_item":
             output = f"{prefix}1. {text}"
-            print(output)
+            safe_print(output)
             total_chars += len(output)
         elif block_type == "paragraph":
             if text:
                 output = f"{prefix}{text}"
-                print(output)
+                safe_print(output)
                 total_chars += len(output)
         elif block_type == "child_page":
             # Render child page with special formatting
-            output = f"{prefix}📄 **{text}** (Page ID: {block['id']})"
-            print(output)
+            output = f"{prefix}**{text}** (Page ID: {block['id']})"
+            safe_print(output)
             total_chars += len(output)
         elif block_type == "toggle":
             # Render toggle with special formatting
             output = f"{prefix}<details><summary>{text}</summary>"
-            print(output)
+            safe_print(output)
             total_chars += len(output)
         
         # Handle nested content
@@ -533,7 +539,7 @@ def render_markdown_turbo(block_tree, root_id, indent=0):
             # Close toggle if it's a toggle block
             if block_type == "toggle":
                 close_output = f"{prefix}</details>"
-                print(close_output)
+                safe_print(close_output)
                 total_chars += len(close_output)
     
     return total_chars
@@ -545,7 +551,7 @@ def render_block_to_markdown(block: Dict[str, Any]) -> str:
     """
     if block.get("type") == "child_page":
         page_title = block.get("child_page", {}).get("title", "Untitled Page")
-        return f"📄 **{page_title}** (Page ID: {block['id']})"
+        return f"**{page_title}** (Page ID: {block['id']})"
     elif block.get("type") == "toggle":
         rich_text = block.get("toggle", {}).get("rich_text", [])
         text = "".join([t.get("plain_text", "") for t in rich_text])
@@ -585,7 +591,7 @@ async def fetch_and_render_page(page_id: str):
         print("Please set NOTION_API_KEY in your .env file.")
         return
     
-    print(f"🚀 Fetching page: {page_id}")
+    print(f"Fetching page: {page_id}")
     start_time = time()
     
     block_tree = await fetch_all_blocks_turbo(page_id)
