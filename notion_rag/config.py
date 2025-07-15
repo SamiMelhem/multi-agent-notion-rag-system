@@ -31,6 +31,8 @@ class Config(BaseSettings):
     # Optional API keys
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
     huggingface_api_key: Optional[str] = Field(default=None, description="HuggingFace API key")
+    gemini_api_key: Optional[str] = Field(default=None, description="Google Gemini API key")
+    google_cloud_project: Optional[str] = Field(default=None, description="Google Cloud Project ID")
     
     model_config = ConfigDict(
         env_file=".env",
@@ -76,6 +78,31 @@ class Config(BaseSettings):
     def set_huggingface_api_key(self, api_key: str) -> bool:
         """Set HuggingFace API key in secure keyring."""
         return SecureKeyManager.store_api_key("huggingface_api_key", api_key)
+    
+    def get_gemini_api_key(self) -> Optional[str]:
+        """Get Gemini API key from config or secure keyring."""
+        if self.gemini_api_key:
+            return self.gemini_api_key
+        
+        return SecureKeyManager.retrieve_api_key("gemini_api_key")
+    
+    def set_gemini_api_key(self, api_key: str) -> bool:
+        """Set Gemini API key in secure keyring."""
+        return SecureKeyManager.store_api_key("gemini_api_key", api_key)
+    
+    def get_google_cloud_project(self) -> Optional[str]:
+        """Get Google Cloud Project ID from config or environment."""
+        if self.google_cloud_project:
+            return self.google_cloud_project
+        
+        # Try to get from environment variable
+        import os
+        return os.getenv("GOOGLE_CLOUD_PROJECT")
+    
+    def set_google_cloud_project(self, project_id: str) -> bool:
+        """Set Google Cloud Project ID in config."""
+        self.google_cloud_project = project_id
+        return True
     
     def delete_api_key(self, key_name: str) -> bool:
         """Delete an API key from secure keyring."""

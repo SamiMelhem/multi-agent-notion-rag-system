@@ -7,6 +7,7 @@ from .config import Config
 from .vector_store import ChromaDBManager, DocumentChunk
 from .embeddings import create_embedding_generator
 from .chunking import chunk_text, count_tokens
+from .gemini_client import create_gemini_client, GeminiMessage
 
 
 @click.group()
@@ -433,6 +434,263 @@ def delete_collection(ctx: click.Context, collection_name: str) -> None:
         
     except Exception as e:
         click.echo(f"❌ Failed to delete collection: {str(e)}")
+        raise click.Abort()
+
+
+@cli.command()
+@click.option(
+    "--api-key",
+    "-k",
+    help="Gemini API key (optional, will use environment variable if not provided)",
+    type=str,
+)
+@click.pass_context
+def gemini_test(ctx: click.Context, api_key: str) -> None:
+    """Test Gemini API connection and basic functionality."""
+    config = ctx.obj["config"]
+    
+    try:
+        click.echo("🔧 Initializing Gemini client...")
+        client = create_gemini_client(config, api_key)
+        
+        # Test connection
+        click.echo("🔗 Testing connection...")
+        if client.test_connection():
+            click.echo("✅ Connection successful!")
+        else:
+            click.echo("❌ Connection failed!")
+            return
+        
+        # Test basic chat completion
+        click.echo("💬 Testing chat completion...")
+        messages = [GeminiMessage("user", "Hello! Please respond with 'Hello from Gemini!'")]
+        
+        response = client.chat_completion(messages, temperature=0.1)
+        click.echo(f"🤖 Response: {response.content}")
+        click.echo(f"📊 Usage: {response.usage}")
+        
+        # Test available models
+        click.echo("📋 Available models:")
+        models = client.get_available_models()
+        for model in models[:3]:  # Show first 3 models
+            click.echo(f"  • {model.get('name', 'Unknown')}")
+        
+        client.close()
+        click.echo("✅ Gemini test completed successfully!")
+        
+    except Exception as e:
+        click.echo(f"❌ Gemini test failed: {str(e)}")
+        raise click.Abort()
+
+
+@cli.command()
+@click.option(
+    "--collection-name",
+    "-c",
+    help="Collection name to search",
+    required=True,
+    type=str,
+)
+@click.option(
+    "--query",
+    "-q",
+    help="Query to ask",
+    required=True,
+    type=str,
+)
+@click.option(
+    "--limit",
+    "-l",
+    help="Maximum number of documents to retrieve",
+    default=5,
+    type=int,
+)
+@click.option(
+    "--temperature",
+    "-t",
+    help="Response temperature (0.0 to 2.0)",
+    default=0.7,
+    type=float,
+)
+@click.option(
+    "--max-tokens",
+    "-m",
+    help="Maximum tokens to generate",
+    default=1000,
+    type=int,
+)
+@click.pass_context
+def rag_query(
+    ctx: click.Context,
+    collection_name: str,
+    query: str,
+    limit: int,
+    temperature: float,
+    max_tokens: int,
+) -> None:
+    """Query documents using RAG with Gemini."""
+    config = ctx.obj["config"]
+    
+    try:
+        click.echo(f"🔍 Searching collection: {collection_name}")
+        click.echo(f"❓ Query: {query}")
+        
+        # Initialize vector store
+        vector_store = ChromaDBManager(config)
+        
+        # Search for relevant documents
+        results = vector_store.search_similar(
+            collection_name=collection_name,
+            query_text=query,
+            n_results=limit
+        )
+        
+        if not results:
+            click.echo("❌ No relevant documents found")
+            return
+        
+        click.echo(f"📚 Found {len(results)} relevant documents")
+        
+        # Initialize Gemini client
+        click.echo("🤖 Initializing Gemini client...")
+        client = create_gemini_client(config)
+        
+        # Prepare documents for RAG
+        documents = []
+        for i, result in enumerate(results):
+            doc = {
+                "content": result.content,
+                "metadata": {
+                    "title": f"Document {i+1}",
+                    "source_id": result.metadata.get("source_id", "unknown"),
+                    "similarity_score": result.similarity_score
+                }
+            }
+            documents.append(doc)
+            click.echo(f"  📄 Document {i+1}: {result.content[:100]}...")
+        
+        # Generate RAG response
+        click.echo("🧠 Generating response with Gemini...")
+        response = client.rag_completion(
+            query=query,
+            context_documents=documents,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        
+        click.echo("\n" + "="*50)
+        click.echo("🤖 GEMINI RESPONSE:")
+        click.echo("="*50)
+        click.echo(response.content)
+        click.echo("="*50)
+        click.echo(f"📊 Usage: {response.usage}")
+        click.echo(f"🔧 Model: {response.model}")
+        
+        # Cleanup
+        vector_store.close()
+        client.close()
+        
+    except Exception as e:
+        click.echo(f"❌ RAG query failed: {str(e)}")
+        raise click.Abort()
+
+
+@cli.command()
+@click.option(
+    "--collection-name",
+    "-c",
+    help="Collection name to use",
+    default="notion_documents",
+    type=str,
+)
+@click.pass_context
+def rag_chat(ctx: click.Context, collection_name: str) -> None:
+    """Start interactive RAG chat with Gemini."""
+    config = ctx.obj["config"]
+    
+    try:
+        click.echo("🔧 Initializing RAG chat system...")
+        
+        # Initialize components
+        vector_store = ChromaDBManager(config)
+        client = create_gemini_client(config)
+        
+        # Check if collection exists
+        collections = vector_store.list_collections()
+        collection_names = [c['name'] for c in collections]
+        
+        if collection_name not in collection_names:
+            click.echo(f"❌ Collection '{collection_name}' not found")
+            click.echo(f"Available collections: {collection_names}")
+            return
+        
+        click.echo(f"✅ Connected to collection: {collection_name}")
+        click.echo(f"📊 Documents in collection: {vector_store.get_collection_info(collection_name)['count']}")
+        click.echo("💬 Start chatting! Type 'exit' to quit.")
+        click.echo("-" * 50)
+        
+        while True:
+            try:
+                query = input("🤖 You: ")
+                if query.lower() in ['exit', 'quit', 'bye']:
+                    break
+                
+                if not query.strip():
+                    continue
+                
+                click.echo("🔍 Searching for relevant documents...")
+                
+                # Search for relevant documents
+                results = vector_store.search_similar(
+                    collection_name=collection_name,
+                    query_text=query,
+                    n_results=5
+                )
+                
+                if not results:
+                    click.echo("❌ No relevant documents found")
+                    continue
+                
+                # Prepare documents for RAG
+                documents = []
+                for i, result in enumerate(results):
+                    doc = {
+                        "content": result.content,
+                        "metadata": {
+                            "title": f"Document {i+1}",
+                            "source_id": result.metadata.get("source_id", "unknown"),
+                            "similarity_score": result.similarity_score
+                        }
+                    }
+                    documents.append(doc)
+                
+                click.echo(f"📚 Found {len(documents)} relevant documents")
+                click.echo("🧠 Generating response...")
+                
+                # Generate RAG response
+                response = client.rag_completion(
+                    query=query,
+                    context_documents=documents,
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+                
+                click.echo(f"🤖 Gemini: {response.content}")
+                click.echo("-" * 50)
+                
+            except KeyboardInterrupt:
+                click.echo("\n👋 Goodbye!")
+                break
+            except Exception as e:
+                click.echo(f"❌ Error: {str(e)}")
+                continue
+        
+        # Cleanup
+        vector_store.close()
+        client.close()
+        
+    except Exception as e:
+        click.echo(f"❌ Failed to start RAG chat: {str(e)}")
         raise click.Abort()
 
 
