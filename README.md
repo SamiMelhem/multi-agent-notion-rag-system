@@ -54,33 +54,7 @@ python chat_with_notion.py
 
 That's it! The first script sets up everything, and the second script lets you chat quickly.
 
-### 4. Alternative: Interactive CLI Workflow
-
-**Recommended: Use the full interactive workflow:**
-
-```bash
-python notion_rag_cli.py workflow -i
-```
-
-This single command will:
-1. **Fetch**: Let you interactively select which Notion page(s) to fetch
-2. **Load**: Automatically process and load content into ChromaDB
-3. **Query**: Start an interactive Gemini-powered RAG session
-
-**Alternative: Run each step manually:**
-
-```bash
-# Step 1: Fetch Notion content
-python notion_rag_cli.py fetch -i
-
-# Step 2: Load into vector database  
-python notion_rag_cli.py load -i
-
-# Step 3: Start querying
-python notion_rag_cli.py query -i
-```
-
-### 5. Ask Questions About Your Notion Database
+### 4. Ask Questions About Your Notion Database
 
 Once loaded, you can ask questions in natural language:
 
@@ -144,7 +118,6 @@ python chat_with_notion.py
 |--------|---------|-----------|----------|-------------|
 | `notion_rag_complete.py` | Complete setup + chat | ~15-30 seconds | First time, fresh data | New setup, data refresh |
 | `chat_with_notion.py` | Quick chat only | ~4-5 seconds | Daily conversations | Regular usage, existing data |
-| `notion_rag_cli.py workflow` | Interactive CLI | ~15-30 seconds | Guided setup | When you want step-by-step control |
 
 ## 📁 Core Files
 
