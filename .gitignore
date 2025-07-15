@@ -148,9 +148,11 @@ chroma_db/
 *.key
 *.pem
 config.json
+cost_log.json
 
 # Temporary files
 *.tmp
 *.temp
 temp/
-tmp/ 
+tmp/
+notion_content/

@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The Notion RAG CLI is a multi-agent RAG (Retrieval-Augmented Generation) system designed to interact with Notion workspaces through a command-line interface. The system provides secure API key management, robust error handling, and efficient document processing capabilities.
+The Notion RAG CLI is a Retrieval-Augmented Generation (RAG) system designed to interact with Notion workspaces through a streamlined two-script workflow. The system provides secure API key management, robust error handling, and efficient document processing capabilities with Google Gemini 2.5 Flash-Lite Preview integration.
 
 ## Current System State
 
@@ -14,48 +14,70 @@ The Notion RAG CLI is a multi-agent RAG (Retrieval-Augmented Generation) system 
 
 ### Core Components
 
-1. **CLI Interface** (`notion_rag/cli.py`)
-   - Built with Click framework
-   - Provides commands: `init`, `index`, `search`, `chat`
+1. **Complete RAG System** (`notion_rag_complete.py`)
+   - Main workflow script combining fetch, load, and chat
+   - Interactive page selection and querying
+   - Cost tracking and prompt engineering
    - Version: 0.1.0
 
-2. **Configuration Management** (`notion_rag/config.py`)
+2. **Quick Chat Interface** (`chat_with_notion.py`)
+   - Lightweight script for daily chat with existing database
+   - Fast initialization for quick queries
+   - Multiple prompt templates and cost tracking
+
+3. **Configuration Management** (`notion_rag/config.py`)
    - Uses Pydantic for data validation
    - Supports environment variables and .env files
    - Integrates with secure keyring storage
+   - ChromaDB configuration with nested environment variables
 
-3. **Security Layer** (`notion_rag/security.py`)
+4. **Security Layer** (`notion_rag/security.py`)
    - Secure API key management using system keyring
    - Input validation and sanitization
    - Pydantic models for secure data handling
 
-4. **Notion API Client** (`notion_rag/notion_client.py`)
+5. **Notion API Client** (`notion_rag/notion_client.py`)
    - Async-capable client with rate limiting
    - Comprehensive error handling
    - Support for pages, databases, and blocks
 
+6. **Gemini Integration** (`notion_rag/gemini_client.py`)
+   - Google Gemini 2.5 Flash-Lite Preview integration
+   - Function calling and structured output support
+   - RAG completion with context documents
+
+7. **Vector Store** (`notion_rag/vector_store.py`)
+   - ChromaDB integration for document storage
+   - BAAI/bge-small-en-v1.5 embeddings
+   - Document chunking and similarity search
+
 ## Environment Variables
 
 The system uses the following environment variables:
+
+### Required Environment Variables
 - `NOTION_API_KEY`: Your Notion API integration token
 - `NOTION_HOME_PAGE_ID`: The ID of your Notion home page
-- `NOTION_DATABASE_ID`: (Optional) Default database ID for operations
+- `GEMINI_API_KEY`: Google Gemini API key
+- `GOOGLE_CLOUD_PROJECT`: Google Cloud Project ID for Vertex AI
 
 ## Dependencies
 
 ### Core Dependencies
-- `notion-client==2.4.0`: Official Notion API client
-- `chromadb==1.0.15`: Vector database for document storage
-- `click==8.2.1`: CLI framework
-- `pydantic==2.11.7`: Data validation
-- `keyring==25.6.0`: Secure credential storage
-- `python-dotenv==1.1.1`: Environment variable management
+- `chromadb==1.0.15`: Vector database for document storage and similarity search
+- `google-generativeai==0.8.3`: Google Gemini 2.5 Flash-Lite Preview API client
+- `sentence-transformers==2.5.1`: BAAI/bge-small-en-v1.5 embedding generation
+- `tiktoken==0.7.0`: Token counting and cost tracking for Gemini API
+- `notion-client==2.4.0`: Official Notion API client for content fetching
+- `python-dotenv==1.1.1`: Environment variable management from .env files
+- `pydantic==2.11.7`: Data validation and settings management
+- `pydantic-settings==2.10.1`: Advanced settings management with environment variables
 
-### Development Dependencies
-- `pytest==8.4.1`: Testing framework
-- `black==25.1.0`: Code formatting
-- `mypy==1.16.1`: Type checking
-- `flake8==7.3.0`: Linting
+### Required by Dependencies
+- `requests>=2.32.0`: HTTP client for API communications
+- `numpy>=2.3.0`: Numerical computing for embeddings and vector operations
+- `typing-extensions>=4.14.0`: Type hints for Python compatibility
+- `urllib3>=2.5.0`: HTTP library for secure connections
 
 ## Current Features
 
@@ -63,60 +85,51 @@ The system uses the following environment variables:
 1. **Secure API Key Management**
    - System keyring integration
    - Automatic key retrieval and storage
-   - Support for multiple API keys (Notion, OpenAI, HuggingFace)
+   - Support for multiple API keys (Notion, Gemini, OpenAI, HuggingFace)
 
 2. **Configuration System**
-   - Environment-based configuration
+   - Environment-based configuration with nested variables
    - Pydantic validation
-   - ChromaDB configuration
+   - ChromaDB configuration with double underscore syntax
 
-3. **CLI Framework**
-   - Basic command structure
-   - Interactive chat mode (skeleton)
-   - Search and indexing commands (skeleton)
-   - Collection management commands
+3. **Two-Script Workflow**
+   - `notion_rag_complete.py`: Complete setup and interactive chat
+   - `chat_with_notion.py`: Quick daily chat with existing database
 
 4. **Notion API Integration**
-   - Page content retrieval
+   - Page content retrieval with `turbo_notion_fetch.py`
    - Database querying
    - Block children fetching
    - Rate limiting and error handling
 
-5. **Security Features**
-   - Input sanitization
-   - API key validation
-   - Notion ID validation
+5. **Gemini 2.5 Flash-Lite Preview Integration**
+   - Advanced function calling capabilities
+   - Structured output support
+   - RAG completion with context documents
+   - Multiple prompt templates
 
 6. **ChromaDB Vector Database Integration**
    - Local persistent storage
    - Collection management utilities
-   - Document chunking and storage
-   - Vector search capabilities
+   - Document chunking and storage (512-token chunks, 50-token overlap)
+   - Vector similarity search with BAAI/bge-small-en-v1.5 embeddings
    - Batch processing support
-   - Text chunking with 512-token chunks and 50-token overlap
-   - Embedding generation using BAAI/bge-small-en-v1.5
-   - Vector similarity search with automatic embedding generation
 
-### 🚧 In Progress / TODO
-1. **Notion Content Processing**
-   - Convert Notion pages to text chunks
-   - Extract structured data from Notion blocks
-   - Handle different Notion content types
+7. **Cost Tracking and Optimization**
+   - Token counting with tiktoken
+   - Cost estimation for Gemini API calls
+   - Usage statistics and summaries
 
-2. **RAG Pipeline**
-   - Document retrieval and ranking
-   - Response generation with LLMs
-   - Context management
+8. **Prompt Engineering**
+   - Multiple RAG prompt templates (rag_qa, rag_summary, rag_analysis, rag_extraction)
+   - Special query prefixes (summarize:, analyze:, extract:)
+   - Customizable prompt library with task-specific templates
+   - Context-aware responses with source citation
 
-3. **Chat Interface**
-   - Interactive conversation with documents
-   - Conversation history
-   - Response streaming
-
-4. **Indexing System**
-   - Batch processing of Notion pages
-   - Incremental updates
-   - Progress tracking
+9. **Security Features**
+   - Input sanitization
+   - API key validation
+   - Notion ID validation
 
 ## File Structure
 
@@ -124,16 +137,23 @@ The system uses the following environment variables:
 notion-rag-cli/
 ├── notion_rag/
 │   ├── __init__.py          # Package initialization
-│   ├── cli.py              # Command-line interface
 │   ├── config.py           # Configuration management
 │   ├── security.py         # Security utilities
 │   ├── notion_client.py    # Notion API client
-│   └── vector_store.py     # ChromaDB integration
+│   ├── gemini_client.py    # Gemini API client
+│   ├── vector_store.py     # ChromaDB integration
+│   ├── embeddings.py       # Embedding generation
+│   ├── chunking.py         # Text chunking utilities
+│   ├── cost_tracker.py     # Cost tracking and optimization
+│   └── prompt_utils.py     # Prompt engineering utilities
 ├── tests/
 │   ├── test_config.py
 │   ├── test_notion_client.py
 │   ├── test_security.py
 │   └── test_vector_store.py
+├── notion_rag_complete.py  # Complete workflow script
+├── chat_with_notion.py     # Quick chat script
+├── turbo_notion_fetch.py   # Notion content fetcher
 ├── requirements.txt        # Dependencies
 ├── README.md              # User documentation
 └── SYSTEM_DOCUMENTATION.md # This file
@@ -141,7 +161,7 @@ notion-rag-cli/
 
 ## Usage Examples
 
-### Basic Setup
+### Quick Start
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -150,35 +170,48 @@ pip install -r requirements.txt
 export NOTION_API_KEY="your_api_key_here"
 export NOTION_HOME_PAGE_ID="your_home_page_id_here"
 
-# Run CLI
-python -m notion_rag.cli --help
+# Complete workflow (fetch, load, chat)
+python notion_rag_complete.py
+
+# Quick chat with existing database
+python chat_with_notion.py
 ```
 
-### Available Commands
+### Environment Setup
 ```bash
-# Initialize system
-notion-rag init --database-id <database_id>
-
-# Collection management
-notion-rag collections                    # List all collections
-notion-rag collection-info -c <name>     # Get collection details
-notion-rag clear-collection -c <name>    # Clear collection
-notion-rag delete-collection -c <name>   # Delete collection
-
-# Text processing
-notion-rag chunk -t "your text here"     # Chunk text into segments
-notion-rag embed -t "your text here"     # Generate embeddings
-notion-rag add-text -c <collection> -t "text" # Add text with chunking
-
-# Index documents
-notion-rag index --database-id <database_id> --batch-size 100
-
-# Search documents
-notion-rag search "your query here" --limit 10
-
-# Interactive chat
-notion-rag chat
+# Create .env file
+cat > .env << EOF
+NOTION_API_KEY=your_notion_api_key_here
+NOTION_HOME_PAGE_ID=your_home_page_id_here
+GEMINI_API_KEY=your_gemini_api_key_here
+GOOGLE_CLOUD_PROJECT=your_google_cloud_project_id_here
+EOF
 ```
+
+### Available Commands in Interactive Mode
+
+#### notion_rag_complete.py Commands
+- `fetch`: Fetch pages from Notion
+- `load`: Load cached pages to vector database
+- `query`: Search and chat with documents
+- `workflow`: Complete fetch → load → query workflow
+- `stats`: Show database statistics
+- `costs`: Show cost summary
+- `templates`: Show available prompt templates
+- `help`: Show help information
+- `quit`: Exit the application
+
+#### chat_with_notion.py Commands
+- `help`: Show available commands
+- `stats`: Show database statistics
+- `costs`: Show cost summary
+- `templates`: Show available prompt templates
+- `quit`/`exit`: Exit the chat
+
+#### Special Query Prefixes
+- `summarize:`: Use RAG summarization template for detailed summaries with context
+- `analyze:`: Use RAG analysis template for comprehensive content analysis
+- `extract:`: Use RAG extraction template for key points and facts extraction
 
 ## Security Considerations
 
@@ -186,6 +219,7 @@ notion-rag chat
 2. **Input Validation**: All inputs are validated and sanitized
 3. **Error Handling**: Comprehensive error handling without exposing sensitive data
 4. **Rate Limiting**: Built-in rate limiting for API calls
+5. **Environment Variables**: Secure handling of nested configuration
 
 ## Development Guidelines
 
@@ -205,29 +239,47 @@ notion-rag chat
 - Provide meaningful error messages
 - Log errors appropriately
 
+## Cost Optimization
+
+### Token Counting
+- Uses tiktoken for accurate token counting
+- Tracks input and output tokens separately
+- Provides cost estimates for Gemini API calls
+
+### Embedding Optimization
+- Uses efficient BAAI/bge-small-en-v1.5 model
+- 512-token chunks with 50-token overlap
+- Batch processing for large datasets
+
+### Prompt Engineering
+- Multiple RAG templates (rag_qa, rag_summary, rag_analysis, rag_extraction)
+- Special query prefixes (summarize:, analyze:, extract:)
+- Context-aware responses with source citation
+- Structured output for better parsing
+
 ## Next Steps
 
 ### Immediate Priorities
-1. Add document embedding functionality
-2. Complete the indexing system
-3. Implement vector search
-4. Enhance RAG pipeline
+1. Enhanced error recovery and retry logic
+2. Incremental database updates
+3. Export/import functionality
+4. Web interface development
 
 ### Future Enhancements
-1. Add support for multiple Notion workspaces
-2. Implement document versioning
-3. Add export/import functionality
-4. Create web interface
+1. Support for multiple Notion workspaces
+2. Document versioning and change tracking
+3. Advanced analytics and insights
+4. Integration with other LLM providers
 
 ## Troubleshooting
 
 ### Common Issues
-1. **API Key Not Found**: Ensure NOTION_API_KEY is set in environment or keyring
-2. **Rate Limiting**: System automatically handles rate limits with retry logic
-3. **Invalid Page ID**: Use the InputValidator to validate Notion IDs
+1. **API Key Not Found**: Ensure environment variables are set or use keyring storage
+2. **Gemini API Errors**: Verify GEMINI_API_KEY and Google Cloud Project setup
+3. **Rate Limiting**: System automatically handles rate limits with retry logic
 
 ### Debug Mode
-Enable debug logging by setting log level to DEBUG in configuration.
+Enable debug logging by setting logging level in your Python environment.
 
 ## Support
 
@@ -239,5 +291,5 @@ For issues and questions:
 ---
 
 **Last Updated**: Current session
-**System Status**: Development in progress
+**System Status**: Production ready with two-script workflow
 **Version**: 0.1.0 
